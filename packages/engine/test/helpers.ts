@@ -25,3 +25,14 @@ export function withBuilt(s: GameState, seat: number, defIds: string[]): GameSta
 export function withCoins(s: GameState, seat: number, coins: number): GameState {
   return { ...s, players: s.players.map((p) => (p.seat === seat ? { ...p, coins } : p)) };
 }
+
+export function withHand(s: GameState, seat: number, defIds: string[]): GameState {
+  return {
+    ...s,
+    players: s.players.map((p) => (p.seat === seat ? { ...p, hand: defIds.map((d, i) => ({ uid: `${d}#h${i}`, defId: d })) } : p)),
+  };
+}
+
+export function withTower(s: GameState, seat: number, stages: number): GameState {
+  return { ...s, players: s.players.map((p) => (p.seat === seat ? { ...p, towerStages: stages } : p)) };
+}

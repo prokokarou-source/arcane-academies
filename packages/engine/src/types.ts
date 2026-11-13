@@ -113,7 +113,8 @@ export interface GameState {
   rngState: number;
   term: Term;
   turn: number;
-  phase: 'picking' | 'ended';
+  /** 'bonus' = Chronomancy kept-card extra turn at the start of a Term. */
+  phase: 'picking' | 'bonus' | 'ended';
   players: PlayerState[];
   archive: Card[];
   log: LogEntry[];

@@ -4,6 +4,7 @@
  */
 import type { Action, BotLevel, PlayerView } from '@arcane/engine';
 import type { ClientMessage, ErrorCode, LobbyState, RoomSettings, SeatId, ServerMessage } from '@arcane/protocol';
+import { termDuels } from '../game/derive';
 import { clearSession, loadSession, saveSession } from './session';
 
 export interface SocketLike {
@@ -27,6 +28,15 @@ export type Notice = 'replaced' | 'expired' | 'left' | 'removed' | 'rejoinFailed
 export type GameMsg = Extract<ServerMessage, { t: 'game' }>;
 export type SeatPatch = Omit<Extract<ClientMessage, { t: 'setSeat' }>, 't'>;
 
+/** My duels of the Term that just ended, kept until the player dismisses them. */
+export interface TermDuels {
+  term: number;
+  /** The view right after the duels (duel power at the time). */
+  view: PlayerView;
+  /** The tokens I gained: +n per win, -1 per loss; ties add none. */
+  deltas: number[];
+}
+
 export interface ClientState {
   conn: 'connecting' | 'open' | 'reconnecting' | 'stopped';
   seatId: SeatId | null;
@@ -36,6 +46,7 @@ export interface ClientState {
   game: GameMsg | null;
   /** The view before the latest game message, used to show what changed (Term duels). */
   prevView: PlayerView | null;
+  duels: TermDuels | null;
   error: { code: ErrorCode; message: string } | null;
   notice: Notice | null;
   /** True after an act was sent until the server answers: blocks double taps. */
@@ -56,6 +67,7 @@ const INITIAL: ClientState = {
   lobby: null,
   game: null,
   prevView: null,
+  duels: null,
   error: null,
   notice: null,
   acting: false,
@@ -168,12 +180,12 @@ export class GameClient {
         return;
       case 'lobby':
         this.rejoinPending = false;
-        this.set({ lobby: msg.lobby, hostId: msg.lobby.hostId, game: null, prevView: null, acting: false });
+        this.set({ lobby: msg.lobby, hostId: msg.lobby.hostId, game: null, prevView: null, duels: null, acting: false });
         this.runSoloPlan(msg.lobby);
         return;
       case 'game':
         this.rejoinPending = false;
-        this.set({ game: msg, prevView: this.state.game?.view ?? null, lobby: null, acting: false });
+        this.onGame(msg);
         return;
       case 'error':
         if (this.rejoinPending && DEAD_SESSION.includes(msg.code)) {
@@ -189,10 +201,17 @@ export class GameClient {
     }
   }
 
+  private onGame(msg: GameMsg): void {
+    const prev = this.state.game?.view ?? null;
+    const added = termDuels(prev, msg.view);
+    const duels = added && prev ? { term: prev.term, view: msg.view, deltas: added[msg.view.me]?.deltas ?? [] } : this.state.duels;
+    this.set({ game: msg, prevView: prev, duels, lobby: null, acting: false });
+  }
+
   private dropSession(notice: Notice): void {
     clearSession(this.deps.storage);
     this.soloPlan = null;
-    this.set({ seatId: null, code: null, hostId: null, lobby: null, game: null, prevView: null, acting: false, notice });
+    this.set({ seatId: null, code: null, hostId: null, lobby: null, game: null, prevView: null, duels: null, acting: false, notice });
   }
 
   private runSoloPlan(lobby: LobbyState): void {
@@ -271,6 +290,10 @@ export class GameClient {
 
   clearError(): void {
     this.set({ error: null });
+  }
+
+  clearDuels(): void {
+    this.set({ duels: null });
   }
 
   clearNotice(): void {

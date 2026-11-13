@@ -6,14 +6,14 @@ import { CardView } from './CardView';
 import { useClient, useClientState, useT } from './context';
 import { Deadline } from './Deadline';
 import { COIN, DISCIPLINE_ICON, DUEL, effectLabel } from './icons';
+import { GameEnd } from './GameEnd';
 import { PlayerPanel } from './PlayerPanel';
-
-const ROMAN = ['I', 'II', 'III'];
+import { ROMAN, TermEnd } from './TermEnd';
 
 export function Game() {
   const client = useClient();
   const t = useT();
-  const { game, acting } = useClientState();
+  const { game, duels, acting } = useClientState();
   const [selected, setSelected] = useState<string | null>(null);
   const [inspect, setInspect] = useState<number | null>(null);
   const [table, setTable] = useState(false);
@@ -72,11 +72,15 @@ export function Game() {
         {status}
       </p>
 
+      {game.result ? (
+        <GameEnd me={view.me} result={game.result} seats={seats} />
+      ) : (
       <div className="hand">
         {options.map((o) => (
           <CardView key={o.cardUid} opt={o} selected={o.cardUid === selected} onSelect={() => canAct && setSelected(o.cardUid)} />
         ))}
       </div>
+      )}
 
       {canAct && (
         <div className="actions">
@@ -108,6 +112,7 @@ export function Game() {
           </section>
         </div>
       )}
+      {duels && <TermEnd term={duels.term} view={duels.view} deltas={duels.deltas} seats={seats} onClose={() => client.clearDuels()} />}
       {inspect !== null && <PlayerPanel player={view.players[inspect]} status={seats[inspect]} onClose={() => setInspect(null)} />}
     </main>
   );

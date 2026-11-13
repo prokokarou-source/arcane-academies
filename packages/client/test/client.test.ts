@@ -188,4 +188,17 @@ describe('GameClient', () => {
     h.sock().receive({ t: 'lobby', lobby: lobby() });
     expect(calls).toBe(before);
   });
+  it('records Term duels until they are cleared, even when more turns follow', () => {
+    const h = harness();
+    h.client.start();
+    h.sock().open();
+    const g = gameMsg(makeGame(['Ana', 'Bob', 'Cleo']), 0);
+    const after = { ...g, view: { ...g.view, term: 2 as const, duelTokens: [[1, -1], [], []] } };
+    h.sock().receive(g);
+    h.sock().receive(after);
+    h.sock().receive(after);
+    expect(h.client.getState().duels).toMatchObject({ term: 1, deltas: [1, -1] });
+    h.client.clearDuels();
+    expect(h.client.getState().duels).toBeNull();
+  });
 });

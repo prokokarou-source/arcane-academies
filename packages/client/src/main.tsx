@@ -2,6 +2,8 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { GameClient, type SocketLike } from './net/client';
 import { defaultServerUrl } from './net/url';
+import { SoundProvider } from './audio/context';
+import { createSoundBoard, htmlAudio } from './audio/sounds';
 import { PwaProvider, type Pwa } from './pwa/context';
 import { createConnectivity, createInstall, createUpdate } from './pwa/install';
 import { App } from './ui/App';
@@ -30,11 +32,19 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   });
 }
 
+const sound = createSoundBoard({
+  backend: htmlAudio,
+  doc: document,
+  ...(typeof navigator.vibrate === 'function' ? { vibrate: (p: number | number[]) => navigator.vibrate(p) } : {}),
+});
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <PwaProvider pwa={pwa}>
       <ClientProvider client={client} storage={localStorage}>
-        <App initialRoom={room} />
+        <SoundProvider board={sound}>
+          <App initialRoom={room} />
+        </SoundProvider>
       </ClientProvider>
     </PwaProvider>
   </StrictMode>,

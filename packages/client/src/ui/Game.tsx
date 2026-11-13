@@ -8,6 +8,7 @@ import { useClient, useClientState, useT } from './context';
 import { Deadline } from './Deadline';
 import { CostView, EffectView, ResearchView } from './Glyphs';
 import { Crest, Icon } from './Icon';
+import { useSound } from '../audio/context';
 import { GameEnd } from './GameEnd';
 import { PlayerPanel } from './PlayerPanel';
 import { ROMAN, TermEnd } from './TermEnd';
@@ -15,6 +16,7 @@ import { ROMAN, TermEnd } from './TermEnd';
 export function Game() {
   const client = useClient();
   const t = useT();
+  const sound = useSound();
   const { game, duels, acting } = useClientState();
   const [selected, setSelected] = useState<string | null>(null);
   const [inspect, setInspect] = useState<number | null>(null);
@@ -104,14 +106,18 @@ export function Game() {
       ) : (
       <div className="hand">
         {options.map((o) => (
-          <CardView key={o.cardUid} opt={o} selected={o.cardUid === selected} onSelect={() => canAct && setSelected(o.cardUid)} onInfo={() => setInfo(o.defId)} />
+          <CardView key={o.cardUid} opt={o} selected={o.cardUid === selected} onSelect={() => {
+              if (!canAct) return;
+              sound('select');
+              setSelected(o.cardUid);
+            }} onInfo={() => setInfo(o.defId)} />
         ))}
       </div>
       )}
 
       {canAct && (
         <div className="actions">
-          <button className="primary" disabled={!build || acting} onClick={() => build && client.act(build)}>
+          <button className="primary" disabled={!build || acting} onClick={() => build && (sound('build'), client.act(build))}>
             {t('build')}
             {buildCost > 0 && (
               <span className="num cost-chip">
@@ -120,14 +126,14 @@ export function Game() {
               </span>
             )}
           </button>
-          <button disabled={!current?.tower || acting} onClick={() => current?.tower && client.act(current.tower)}>
+          <button disabled={!current?.tower || acting} onClick={() => current?.tower && (sound('tower'), client.act(current.tower))}>
             {t('raiseTower')}
           </button>
-          <button disabled={!current?.sell || acting} onClick={() => current?.sell && client.act(current.sell)}>
+          <button disabled={!current?.sell || acting} onClick={() => current?.sell && (sound('sell'), client.act(current.sell))}>
             {t('sell')}
           </button>
           {current?.keep && (
-            <button disabled={acting} onClick={() => current.keep && client.act(current.keep)}>
+            <button disabled={acting} onClick={() => current.keep && (sound('build'), client.act(current.keep))}>
               {t('keep')}
             </button>
           )}

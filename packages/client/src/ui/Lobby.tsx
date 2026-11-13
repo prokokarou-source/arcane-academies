@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ACADEMIES, type BotLevel } from '@arcane/engine';
 import type { LobbySeat } from '@arcane/protocol';
+import { useSound } from '../audio/context';
 import { useClient, useClientState, useT, type T } from './context';
 import { LEVELS } from './Home';
 import { Crest } from './Icon';
@@ -13,6 +14,7 @@ const duration = (t: T, ms: number) => (ms < 60_000 ? t('seconds', { n: ms / 100
 
 export function Lobby() {
   const client = useClient();
+  const sound = useSound();
   const t = useT();
   const { lobby, seatId } = useClientState();
   const [botLevel, setBotLevel] = useState<BotLevel>('normal');
@@ -39,7 +41,7 @@ export function Lobby() {
       <header className="lobby-head">
         <span className="muted">{t('roomCode')}</span>
         <strong className="code">{lobby.code}</strong>
-        <button onClick={share}>{copied ? t('linkCopied') : t('shareLink')}</button>
+        <button onClick={() => (sound('tap'), share())}>{copied ? t('linkCopied') : t('shareLink')}</button>
         <span className="muted small center">
           {t('inviteHint')} <span className="invite">{link}</span>
         </span>

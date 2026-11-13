@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ACADEMIES, type BotLevel } from '@arcane/engine';
 import { MAX_NAME } from '@arcane/protocol';
+import { useSound } from '../audio/context';
 import { useInstall } from '../pwa/context';
 import { useClient, usePrefs, useT } from './context';
 import { Crest } from './Icon';
@@ -16,10 +17,12 @@ export function Home(props: { initialRoom?: string; onRules(): void; onSettings(
   const [bots, setBots] = useState(3);
   const [level, setLevel] = useState<BotLevel>('normal');
   const install = useInstall();
+  const sound = useSound();
 
   const trimmed = name.trim();
   const nameOk = trimmed.length > 0 && trimmed.length <= MAX_NAME;
   const remember = () => {
+    sound('tap');
     if (prefs.name !== trimmed) setPrefs({ ...prefs, name: trimmed });
   };
 

@@ -1,0 +1,17 @@
+{
+  "name": "arcane-academies",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "test": "vitest run --root packages/engine",
+    "typecheck": "tsc -p packages/engine --noEmit",
+    "sim": "tsx packages/sim/src/cli.ts"
+  },
+  "devDependencies": {
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vitest": "^2.1.9"
+  }
+}

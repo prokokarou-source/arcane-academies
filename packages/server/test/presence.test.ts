@@ -181,4 +181,17 @@ describe('rematch', () => {
     room.handle(a, { t: 'start' });
     expect(a.last('game')!.view.turn).toBe(1);
   });
+
+  it('lets another player call the rematch when the host is gone', () => {
+    const { room, clock, conns } = started();
+    const [a, b] = conns;
+    room.disconnect(a);
+    clock.advance(60_000);
+    playToEnd(room, [b]);
+    room.handle(b, { t: 'rematch' });
+    expect(b.lastError()).toBeUndefined();
+    const lobby = b.last('lobby')!.lobby;
+    expect(lobby.seats.map((s) => s.name)).toEqual(['Bob', 'Bot 1']);
+    expect(lobby.hostId).toBe(b.last('joined')!.seatId);
+  });
 });

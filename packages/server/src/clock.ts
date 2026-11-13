@@ -8,7 +8,14 @@ export interface Clock {
 export const realClock: Clock = {
   now: () => Date.now(),
   setTimer: (ms, fn) => {
-    const t = setTimeout(fn, ms);
+    // A failing room timer must not take the whole server down.
+    const t = setTimeout(() => {
+      try {
+        fn();
+      } catch (e) {
+        console.error('timer callback failed', e);
+      }
+    }, ms);
     t.unref?.();
     return t;
   },

@@ -314,13 +314,16 @@ export class Room {
   }
 
   private rematch(m: Member): void {
-    if (m.id !== this.hostId) return this.fail(m.conn!, 'not_host', 'Only the host can do that');
+    const host = this.members.find((x) => x.id === this.hostId);
+    // A host who is gone cannot block the rematch: any connected player may call it and becomes host.
+    if (m.id !== this.hostId && host?.conn) return this.fail(m.conn!, 'not_host', 'Only the host can do that');
     if (this.phase !== 'game' || this.state?.phase !== 'ended') {
       return this.fail(m.conn!, 'wrong_phase', 'The game has not ended');
     }
     this.clearTurnTimer();
     this.phase = 'lobby';
     this.state = null;
+    this.hostId = m.id === this.hostId || !host?.conn ? m.id : this.hostId;
     for (const x of [...this.members]) {
       x.botControlled = false;
       x.engineSeat = -1;

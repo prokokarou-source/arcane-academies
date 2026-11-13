@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { PublicPlayer } from '@arcane/engine';
 import type { SeatStatus } from '@arcane/protocol';
 import { duelPowerOf, handOptions, neighbors, productionOf, researchOf, towerOf, tradeCost, waitingFor } from '../game/derive';
+import { CardInfo } from './CardInfo';
 import { CardView } from './CardView';
 import { useClient, useClientState, useT } from './context';
 import { Deadline } from './Deadline';
@@ -17,6 +18,7 @@ export function Game() {
   const [selected, setSelected] = useState<string | null>(null);
   const [inspect, setInspect] = useState<number | null>(null);
   const [table, setTable] = useState(false);
+  const [info, setInfo] = useState<string | null>(null);
   const turnKey = game ? `${game.view.term}/${game.view.turn}/${game.view.phase}` : '';
   useEffect(() => setSelected(null), [turnKey]);
   if (!game) return null;
@@ -80,7 +82,7 @@ export function Game() {
       ) : (
       <div className="hand">
         {options.map((o) => (
-          <CardView key={o.cardUid} opt={o} selected={o.cardUid === selected} onSelect={() => canAct && setSelected(o.cardUid)} />
+          <CardView key={o.cardUid} opt={o} selected={o.cardUid === selected} onSelect={() => canAct && setSelected(o.cardUid)} onInfo={() => setInfo(o.defId)} />
         ))}
       </div>
       )}
@@ -116,6 +118,7 @@ export function Game() {
         </div>
       )}
       {duels && <TermEnd term={duels.term} view={duels.view} deltas={duels.deltas} seats={seats} onClose={() => client.clearDuels()} />}
+      {info && <CardInfo defId={info} onClose={() => setInfo(null)} />}
       {inspect !== null && <PlayerPanel player={view.players[inspect]} status={seats[inspect]} onClose={() => setInspect(null)} />}
     </main>
   );

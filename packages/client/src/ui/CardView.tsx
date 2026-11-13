@@ -3,7 +3,7 @@ import { bankCost, tradeCost, type CardOptions } from '../game/derive';
 import { useT } from './context';
 import { costLabel, effectLabel } from './icons';
 
-export function CardView(props: { opt: CardOptions; selected: boolean; onSelect(): void }) {
+export function CardView(props: { opt: CardOptions; selected: boolean; onSelect(): void; onInfo(): void }) {
   const t = useT();
   const def = cardDef(props.opt.defId);
   const b = props.opt.build;
@@ -15,6 +15,7 @@ export function CardView(props: { opt: CardOptions; selected: boolean; onSelect(
   else if (bankCost(plan) > 0) status = t('costsCoins', { n: bankCost(plan) });
   else status = t('affordable');
   return (
+    <div className="card-wrap">
     <button
       type="button"
       data-testid="card"
@@ -28,5 +29,9 @@ export function CardView(props: { opt: CardOptions; selected: boolean; onSelect(
       <span className="card-effects">{def.effects.map(effectLabel).join('  ')}</span>
       <span className={`card-status${plan ? (plan.free ? ' ok' : '') : ' no'}`}>{status}</span>
     </button>
+    <button type="button" className="card-info" aria-label={t('about', { name: def.name })} onClick={props.onInfo}>
+      ⓘ
+    </button>
+    </div>
   );
 }

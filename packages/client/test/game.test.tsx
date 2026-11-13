@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
-import { submitAction } from '@arcane/engine';
+import { cardDef, submitAction } from '@arcane/engine';
 import { handOptions } from '../src/game/derive';
 import { renderApp } from './render';
 import { gameMsg, makeGame, type GameMsg } from './views';
@@ -113,6 +113,19 @@ describe('Game screen', () => {
     expect(within(dialog).getByText('+3 ★')).toBeTruthy();
     expect(within(dialog).getByText('+7 ★')).toBeTruthy();
     expect(within(dialog).getByText('Each duel you win gives +1 extra Renown.')).toBeTruthy();
+  });
+
+  it('the info button explains a card without selecting it', () => {
+    const g = gameMsg(s, 0);
+    const h = inGame(g);
+    const name = cardDef(g.view.players[0].hand![0].defId).name;
+    fireEvent.click(screen.getByRole('button', { name: 'About ' + name }));
+    const dialog = screen.getByRole('dialog', { name });
+    expect(within(dialog).getByText(/Free to build.|Cost: /)).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Close' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(h.sock().sent).toEqual([]);
+    expect(screen.getAllByTestId('card')[0].getAttribute('aria-pressed')).toBe('false');
   });
 
   it('shows the deadline countdown', () => {

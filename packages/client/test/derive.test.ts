@@ -50,6 +50,16 @@ describe('derive', () => {
     ]);
   });
 
+  it('reports a Term end even when every duel was a tie', () => {
+    const next = { ...view, term: 2 as const };
+    expect(termDuels(view, next)).toEqual([
+      { seat: 0, deltas: [] },
+      { seat: 1, deltas: [] },
+      { seat: 2, deltas: [] },
+    ]);
+    expect(termDuels({ ...view, term: 3 }, { ...view, term: 3, phase: 'ended' })).not.toBeNull();
+  });
+
   it('lists who has not submitted, without the Archmage, and nobody in the bonus phase', () => {
     const seats = seatsOf(s);
     expect(waitingFor(view, seats)).toEqual(['Ana', 'Bob', 'Cleo']);

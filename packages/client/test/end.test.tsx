@@ -53,9 +53,10 @@ describe('Term end', () => {
   it('shows a tie when duel power is equal', () => {
     const eq = { ...base, view: { ...withDuels(base.view, [0, 0, 0], [[], [], []]), term: 2 as const } };
     const prev = { ...base, view: withDuels(base.view, [0, 0, 0], [[], [], []]) };
-    // No tokens added at all: no duel screen.
+    // Every duel tied: no tokens, but the duel screen still shows both ties.
     play('s1', 's1', [prev, eq]);
-    expect(screen.queryByText('Term I duels')).toBeNull();
+    expect(screen.getByText('Term I duels')).toBeTruthy();
+    expect(screen.getAllByText('Tie')).toHaveLength(2);
   });
 });
 

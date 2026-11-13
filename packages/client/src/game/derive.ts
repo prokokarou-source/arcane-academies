@@ -67,11 +67,12 @@ export function towerOf(p: PublicPlayer): { built: number; total: number; next?:
   return { built: p.towerStages, total: stages.length, ...(next ? { next } : {}) };
 }
 
-/** Duel tokens added per seat between two views, or null when no duels happened in between. */
+/** Duel tokens added per seat between two views, or null when no Term ended in between (all ties still count as a Term end). */
 export function termDuels(prev: PlayerView | null, next: PlayerView): { seat: number; deltas: number[] }[] | null {
   if (!prev || prev.players.length !== next.players.length) return null;
   const out = next.duelTokens.map((tokens, seat) => ({ seat, deltas: tokens.slice(prev.duelTokens[seat]?.length ?? 0) }));
-  return out.some((x) => x.deltas.length > 0) ? out : null;
+  const termOver = next.term !== prev.term || (next.phase === 'ended' && prev.phase !== 'ended');
+  return termOver || out.some((x) => x.deltas.length > 0) ? out : null;
 }
 
 /** Names of seats still to pick this turn (Archmage excluded); null in the bonus phase, where the view can't tell who acts. */

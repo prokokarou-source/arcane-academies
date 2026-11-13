@@ -21,7 +21,7 @@ export const RESOURCE_ICON: Record<Resource, string> = {
   dragonscale: '🐉',
 };
 
-export const DISCIPLINE_ICON: Record<Discipline, string> = { alchemy: '⚗️', astronomy: '🔭', runes: '🜂' };
+export const DISCIPLINE_ICON: Record<Discipline, string> = { alchemy: '⚗️', astronomy: '🔭', runes: '📜' };
 const TARGET_ICON: Record<CountTarget, string> = {
   basic: '⬜',
   rare: '⬛',

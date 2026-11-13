@@ -21,7 +21,7 @@ export function Lobby() {
   const isHost = lobby.hostId === seatId;
   const taken = (s: LobbySeat) => new Set(lobby.seats.filter((x) => x.id !== s.id && x.academyId).map((x) => x.academyId));
 
-  const link = inviteLink(lobby.code, location, __LAN_ORIGIN__);
+  const link = inviteLink(lobby.code, location, typeof __LAN_ORIGIN__ === 'string' ? __LAN_ORIGIN__ : null);
   const share = async () => {
     try {
       if (navigator.share) await navigator.share({ title: t('appName'), url: link });

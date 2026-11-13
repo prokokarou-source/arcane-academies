@@ -50,7 +50,7 @@ describe('GameClient', () => {
       h.sock().receive({ t: 'joined', code: 'WAND-42', seatId: 's1', token: 'tok' });
       h.sock().receive({ t: 'lobby', lobby: lobby() });
       h.sock().serverClose(code);
-      expect(h.storage.data.size).toBe(0);
+      expect(h.storage.data.size).toBe(code === 4001 ? 1 : 0);
       expect(h.client.getState()).toMatchObject({ notice, lobby: null, game: null, seatId: null });
       h.runTimers();
       h.sock().open();
@@ -200,5 +200,54 @@ describe('GameClient', () => {
     expect(h.client.getState().duels).toMatchObject({ term: 1, deltas: [1, -1] });
     h.client.clearDuels();
     expect(h.client.getState().duels).toBeNull();
+  });
+  it('replaced keeps the stored session for the tab that took the seat', () => {
+    const h = harness();
+    h.client.start();
+    h.sock().open();
+    h.sock().receive({ t: 'joined', code: 'WAND-42', seatId: 's1', token: 'tok' });
+    h.sock().serverClose(4001);
+    expect(h.storage.getItem('arcane.session')).toContain('tok');
+    h.sock().open();
+    expect(h.sock().sent).toEqual([]);
+  });
+
+  it('rejoins from memory on reconnect even if another tab cleared storage', () => {
+    const h = harness();
+    h.client.start();
+    h.sock().open();
+    h.sock().receive({ t: 'joined', code: 'WAND-42', seatId: 's1', token: 'tok' });
+    h.storage.removeItem('arcane.session');
+    h.sock().serverClose(1006);
+    h.runTimers();
+    h.sock().open();
+    expect(h.sock().sent).toEqual([{ t: 'rejoin', code: 'WAND-42', token: 'tok' }]);
+  });
+
+  it('reads storage only at start, so a session written by another tab is not stolen on reconnect', () => {
+    const h = harness();
+    h.client.start();
+    h.sock().open();
+    h.storage.setItem('arcane.session', JSON.stringify({ code: 'WAND-42', token: 'other' }));
+    h.sock().serverClose(1006);
+    h.runTimers();
+    h.sock().open();
+    expect(h.sock().sent).toEqual([]);
+  });
+
+  it('restores the host id after a reload', () => {
+    const storage = memoryStorage();
+    const h = harness(storage);
+    h.client.start();
+    h.sock().open();
+    h.sock().receive({ t: 'joined', code: 'WAND-42', seatId: 's1', token: 'tok' });
+    h.sock().receive({ t: 'lobby', lobby: lobby(2, 's1') });
+    h.client.stop();
+    const h2 = harness(storage);
+    h2.client.start();
+    h2.sock().open();
+    h2.sock().receive({ t: 'joined', code: 'WAND-42', seatId: 's1', token: 'tok' });
+    h2.sock().receive(gameMsg(makeGame(['Ana', 'Bob', 'Cleo']), 0));
+    expect(h2.client.getState().hostId).toBe('s1');
   });
 });

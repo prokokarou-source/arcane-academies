@@ -5,7 +5,7 @@
 import type { Action, BotLevel, PlayerView } from '@arcane/engine';
 import type { ClientMessage, ErrorCode, LobbyState, RoomSettings, SeatId, ServerMessage } from '@arcane/protocol';
 import { termDuels } from '../game/derive';
-import { clearSession, loadSession, saveSession } from './session';
+import { clearSession, loadSession, saveSession, type Session } from './session';
 
 export interface SocketLike {
   readyState: number;
@@ -83,6 +83,8 @@ export class GameClient {
   private timer: unknown = null;
   private stopped = false;
   private rejoinPending = false;
+  /** The seat this client holds. Storage is read once at start (reload) and only written afterwards, so tabs never steal from each other. */
+  private session: Session | null = null;
   private soloPlan: { bots: number; level: BotLevel } | null = null;
 
   constructor(private readonly deps: ClientDeps) {}
@@ -105,6 +107,8 @@ export class GameClient {
 
   start(): void {
     this.stopped = false;
+    this.session = loadSession(this.deps.storage);
+    if (this.session?.hostId) this.set({ hostId: this.session.hostId });
     this.connect();
   }
 
@@ -141,7 +145,7 @@ export class GameClient {
   private onOpen(): void {
     this.backoff = MIN_BACKOFF;
     this.set({ conn: 'open' });
-    const session = loadSession(this.deps.storage);
+    const session = this.session;
     if (session) {
       this.rejoinPending = true;
       this.raw({ t: 'rejoin', code: session.code, token: session.token });
@@ -178,12 +182,20 @@ export class GameClient {
     switch (msg.t) {
       case 'joined':
         this.rejoinPending = false;
-        saveSession(this.deps.storage, { code: msg.code, token: msg.token });
-        this.set({ seatId: msg.seatId, code: msg.code, notice: null, error: null });
+        {
+          const hostId = this.session?.code === msg.code ? this.session.hostId : undefined;
+          this.session = { code: msg.code, token: msg.token, ...(hostId ? { hostId } : {}) };
+          saveSession(this.deps.storage, this.session);
+          this.set({ seatId: msg.seatId, code: msg.code, hostId: hostId ?? null, notice: null, error: null });
+        }
         return;
       case 'lobby':
         this.rejoinPending = false;
         this.set({ lobby: msg.lobby, hostId: msg.lobby.hostId, game: null, prevView: null, duels: null, acting: false });
+        if (this.session && this.session.hostId !== msg.lobby.hostId) {
+          this.session = { ...this.session, hostId: msg.lobby.hostId };
+          saveSession(this.deps.storage, this.session);
+        }
         this.runSoloPlan(msg.lobby);
         return;
       case 'game':
@@ -212,7 +224,9 @@ export class GameClient {
   }
 
   private dropSession(notice: Notice): void {
-    clearSession(this.deps.storage);
+    this.session = null;
+    // Replaced: another tab or device holds the seat now and may share this storage, so leave it alone.
+    if (notice !== 'replaced') clearSession(this.deps.storage);
     this.soloPlan = null;
     this.set({ seatId: null, code: null, hostId: null, lobby: null, game: null, prevView: null, duels: null, acting: false, notice });
   }

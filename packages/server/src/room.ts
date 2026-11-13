@@ -252,23 +252,29 @@ export class Room {
     this.broadcast();
   }
 
-  private leave(m: Member): void {
+  /** The conn moves on to another room: leave this one without telling it. */
+  detach(conn: Conn): void {
+    const m = this.byConn.get(conn);
+    if (m) this.leave(m, false);
+  }
+
+  private leave(m: Member, notify = true): void {
     const conn = m.conn!;
-    if (this.phase === 'lobby') return this.removeMember(m, 'left');
+    if (this.phase === 'lobby') return this.removeMember(m, notify ? 'left' : null);
     // In a game the seat stays (the token still works); a bot plays it from now on.
     this.byConn.delete(conn);
     m.conn = null;
-    conn.close('left');
+    if (notify) conn.close('left');
     m.botControlled = true;
     this.advance();
   }
 
-  private removeMember(m: Member, reason: CloseReason): void {
+  private removeMember(m: Member, reason: CloseReason | null): void {
     this.clearGrace(m);
     this.members = this.members.filter((x) => x !== m);
     if (m.conn) {
       this.byConn.delete(m.conn);
-      m.conn.close(reason);
+      if (reason) m.conn.close(reason);
       m.conn = null;
     }
     if (this.hostId === m.id) {

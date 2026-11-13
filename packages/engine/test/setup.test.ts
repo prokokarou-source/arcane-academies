@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { createGame, dealTerm } from '../src/setup';
 import { cardDef } from '../src/data/cards';
-import type { SeatConfig } from '../src/types';
+import { seats } from './helpers';
 
-export const seats = (n: number): SeatConfig[] =>
-  Array.from({ length: n }, (_, i) => ({ kind: 'bot', name: `P${i}`, botLevel: 'normal' }) as SeatConfig);
+
+
 
 describe('setup', () => {
   it('deals 7 cards per seat in every term', () => {

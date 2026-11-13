@@ -74,3 +74,20 @@ Production build (into `packages/client/dist`):
 ```bash
 npx vite build packages/client
 ```
+
+## Playing online (deploy to Render)
+
+One free Render web service runs the game server and serves the web client from the same address.
+
+```bash
+npm run build   # builds the client into packages/client/dist
+npm start       # starts the server; it also serves packages/client/dist when it exists
+```
+
+`render.yaml` describes the service (build `npm ci && npm run build`, start `npm start`, health check `/health`). To put it online:
+
+1. Create a GitHub repository and push this project to it.
+2. On https://render.com, sign in with GitHub, choose **New → Blueprint**, pick the repository and confirm. Render reads `render.yaml`.
+3. When the deploy is green, open the address Render gives you (like `https://arcane-academies.onrender.com`). Share it with friends; the lobby's Share link already points there.
+
+On the free plan the service sleeps after about 15 minutes without visitors. The first visit after that takes about a minute to wake it, and rooms in progress are lost when it sleeps or redeploys.

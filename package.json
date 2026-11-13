@@ -9,11 +9,16 @@
     "typecheck": "tsc -p packages/engine --noEmit && tsc -p packages/protocol --noEmit && tsc -p packages/server --noEmit && tsc -p packages/client --noEmit",
     "sim": "tsx packages/sim/src/cli.ts",
     "server": "tsx packages/server/src/main.ts",
-    "client": "vite packages/client"
+    "client": "vite packages/client",
+    "build": "vite build packages/client",
+    "start": "tsx packages/server/src/main.ts"
   },
   "devDependencies": {
     "tsx": "^4.23.15",
     "typescript": "^5.9.3",
     "vitest": "^2.1.9"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

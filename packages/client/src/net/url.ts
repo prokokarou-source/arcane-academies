@@ -1,8 +1,12 @@
 /** Addresses the client derives from the page it was opened on. */
 
-/** The game server runs next to the page on port 8787; https pages must use wss. */
-export function defaultServerUrl(loc: { protocol: string; hostname: string }): string {
-  return `${loc.protocol === 'https:' ? 'wss' : 'ws'}://${loc.hostname}:8787`;
+/**
+ * Where the game server is. In development it runs on port 8787 next to the Vite page;
+ * when deployed, the server also serves the page, so it is the page's own address. https pages need wss.
+ */
+export function defaultServerUrl(loc: { protocol: string; hostname: string; host: string }, dev: boolean): string {
+  const scheme = loc.protocol === 'https:' ? 'wss' : 'ws';
+  return dev ? `${scheme}://${loc.hostname}:8787` : `${scheme}://${loc.host}`;
 }
 
 const LOCAL = ['localhost', '127.0.0.1', '[::1]', '::1'];

@@ -6,7 +6,7 @@ import { App } from './ui/App';
 import { ClientProvider } from './ui/context';
 import './styles.css';
 
-const url = (import.meta.env.VITE_SERVER_URL as string | undefined) ?? defaultServerUrl(location);
+const url = (import.meta.env.VITE_SERVER_URL as string | undefined) ?? defaultServerUrl(location, import.meta.env.DEV);
 const client = new GameClient({
   url,
   // The browser WebSocket has the SocketLike shape; its handler types are just stricter.

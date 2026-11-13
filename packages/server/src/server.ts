@@ -5,6 +5,7 @@ import { encode, MAX_MESSAGE_BYTES, parseClientMessage, type CloseReason } from 
 import { realClock } from './clock';
 import { RoomManager, type ManagerOptions } from './manager';
 import type { Conn } from './room';
+import { staticHandler } from './static';
 
 export interface ServerOptions {
   port: number;
@@ -12,6 +13,8 @@ export interface ServerOptions {
   manager?: Partial<ManagerOptions>;
   /** Ping interval used to detect dead sockets (phones that vanished without closing). */
   heartbeatMs?: number;
+  /** Folder with the built web client (packages/client/dist). When set, the server also serves the game page. */
+  staticDir?: string;
 }
 
 export interface RunningServer {
@@ -41,10 +44,18 @@ function wrap(ws: WebSocket): Conn {
 /** Start the HTTP + WebSocket server. `port: 0` picks a free port. */
 export function startServer(opts: ServerOptions): Promise<RunningServer> {
   const manager = new RoomManager(opts.manager ?? {}, realClock);
+  const serveStatic = opts.staticDir ? staticHandler(opts.staticDir) : null;
   const http = createServer((req, res) => {
     if (req.method === 'GET' && req.url === '/health') {
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ ok: true, rooms: manager.size() }));
+      return;
+    }
+    if (serveStatic && (req.method === 'GET' || req.method === 'HEAD')) {
+      serveStatic(req, res).catch(() => {
+        if (!res.headersSent) res.writeHead(500);
+        res.end();
+      });
       return;
     }
     res.writeHead(404).end();

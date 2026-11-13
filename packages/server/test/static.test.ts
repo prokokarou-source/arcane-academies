@@ -18,6 +18,8 @@ function site(): string {
   writeFileSync(join(dir, 'manifest.webmanifest'), '{}');
   writeFileSync(join(dir, 'sw.js'), 'self.addEventListener("fetch", () => {})');
   writeFileSync(join(dir, 'icon-192.png'), 'png');
+  mkdirSync(join(dir, 'sounds'));
+  writeFileSync(join(dir, 'sounds', 'tap.mp3'), 'mp3');
   return dir;
 }
 
@@ -50,6 +52,7 @@ describe('serving the web client', () => {
     expect(manifest.headers.get('content-type')).toBe('application/manifest+json');
     expect(manifest.headers.get('cache-control')).toBe('no-cache');
     expect((await fetch(base + '/icon-192.png')).headers.get('content-type')).toBe('image/png');
+    expect((await fetch(base + '/sounds/tap.mp3')).headers.get('content-type')).toBe('audio/mpeg');
   });
 
   it('answers invite links and unknown pages with the app, but missing assets with 404', async () => {

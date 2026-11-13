@@ -38,6 +38,7 @@ export const en = {
   random: 'Random',
   side: 'Side',
   addBot: 'Add bot',
+  newBotLevel: 'New bot level',
   remove: 'Remove',
   graceLabel: 'Bot takes over after',
   turnTimer: 'Turn timer',

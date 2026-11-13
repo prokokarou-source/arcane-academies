@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
-import { cardDef, submitAction } from '@arcane/engine';
+import { CARDS, cardDef, submitAction } from '@arcane/engine';
 import { handOptions } from '../src/game/derive';
 import { renderApp } from './render';
 import { gameMsg, makeGame, type GameMsg } from './views';
@@ -126,6 +126,36 @@ describe('Game screen', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(h.sock().sent).toEqual([]);
     expect(screen.getAllByTestId('card')[0].getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('Tower works with a card that cannot be built when the tower level is affordable', () => {
+    // Find a real position: a hand card with no build action but a tower action.
+    let found: { g: GameMsg; uid: string } | null = null;
+    for (let seed = 1; seed < 200 && !found; seed++) {
+      let st = makeGame(['Ana', 'Bob', 'Cleo'], seed);
+      // Seat 0 (Pyromancy, tower level 1 = 2 Ore) owns one extra Ore card and has no coins.
+      const oreCard = CARDS.find((c) => c.family === 'basic' && c.effects.some((e) => e.kind === 'produce' && e.options.length === 1 && e.options[0] === 'ore'))!;
+      st = { ...st, players: st.players.map((p, i) => (i === 0 ? { ...p, coins: 0, built: [{ uid: 'x-ore', defId: oreCard.id }] } : p)) };
+      for (const seat of [0]) {
+        const g = gameMsg(st, seat);
+        const opt = handOptions(g.view, g.legal).find((o) => !o.build && o.tower);
+        if (opt) {
+          found = { g, uid: opt.cardUid };
+          break;
+        }
+      }
+    }
+    expect(found).not.toBeNull();
+    const { g, uid } = found!;
+    const h = inGame(g);
+    const card = screen.getAllByTestId('card').find((c) => c.getAttribute('data-uid') === uid)!;
+    expect(card.textContent).toContain("Can't build");
+    fireEvent.click(card);
+    expect(screen.getByRole('button', { name: /^Build/ })).toHaveProperty('disabled', true);
+    const tower = screen.getByRole('button', { name: 'Tower' });
+    expect(tower).toHaveProperty('disabled', false);
+    fireEvent.click(tower);
+    expect(acts(h)).toEqual([{ t: 'act', action: g.legal.find((a) => a.type === 'tower' && a.cardUid === uid) }]);
   });
 
   it('shows the deadline countdown', () => {

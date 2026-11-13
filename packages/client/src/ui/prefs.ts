@@ -4,22 +4,26 @@ export interface Prefs {
   name: string;
   lang: Lang;
   animations: boolean;
-  sound: boolean;
+  music: boolean;
+  sfx: boolean;
   haptics: boolean;
 }
 
 type Store = Pick<Storage, 'getItem' | 'setItem'>;
 const KEY = 'arcane.prefs';
-export const DEFAULT_PREFS: Prefs = { name: '', lang: 'en', animations: true, sound: true, haptics: true };
+export const DEFAULT_PREFS: Prefs = { name: '', lang: 'en', animations: true, music: true, sfx: true, haptics: true };
 
 export function loadPrefs(storage: Store): Prefs {
   try {
-    const v = JSON.parse(storage.getItem(KEY) ?? '{}') as Partial<Prefs>;
+    const v = JSON.parse(storage.getItem(KEY) ?? '{}') as Partial<Prefs> & { sound?: boolean };
+    // Older versions had one Sound switch; turning it off silenced everything.
+    const soundOn = v.sound !== false;
     return {
       name: typeof v.name === 'string' ? v.name : DEFAULT_PREFS.name,
       lang: v.lang === 'el' ? 'el' : 'en',
       animations: v.animations !== false,
-      sound: v.sound !== false,
+      music: typeof v.music === 'boolean' ? v.music : soundOn,
+      sfx: typeof v.sfx === 'boolean' ? v.sfx : soundOn,
       haptics: v.haptics !== false,
     };
   } catch {

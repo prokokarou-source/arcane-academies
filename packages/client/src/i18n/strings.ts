@@ -189,7 +189,8 @@ export const en = {
   // settings
   language: 'Language',
   animations: 'Animations',
-  sound: 'Sound',
+  music: 'Music',
+  sfx: 'Sound effects',
   haptics: 'Haptics',
   saved: 'Saved',
   // rules

@@ -1,11 +1,12 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { GameClient, type SocketLike } from './net/client';
+import { defaultServerUrl } from './net/url';
 import { App } from './ui/App';
 import { ClientProvider } from './ui/context';
 import './styles.css';
 
-const url = (import.meta.env.VITE_SERVER_URL as string | undefined) ?? `ws://${location.hostname}:8787`;
+const url = (import.meta.env.VITE_SERVER_URL as string | undefined) ?? defaultServerUrl(location);
 const client = new GameClient({
   url,
   // The browser WebSocket has the SocketLike shape; its handler types are just stricter.

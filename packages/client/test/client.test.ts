@@ -250,4 +250,47 @@ describe('GameClient', () => {
     h2.sock().receive(gameMsg(makeGame(['Ana', 'Bob', 'Cleo']), 0));
     expect(h2.client.getState().hostId).toBe('s1');
   });
+  it('holds queued moves while a rejoin is pending and drops them if the seat is gone', () => {
+    const storage = memoryStorage();
+    storage.setItem('arcane.session', JSON.stringify({ code: 'WAND-42', token: 'tok' }));
+    const h = harness(storage);
+    h.client.start();
+    expect(h.client.getState().restoring).toBe(true);
+    h.sock().open();
+    h.client.create('Ana');
+    expect(h.sock().sent).toEqual([{ t: 'rejoin', code: 'WAND-42', token: 'tok' }]);
+    h.sock().receive({ t: 'error', code: 'no_room', message: 'x' });
+    expect(h.client.getState().restoring).toBe(false);
+    expect(h.sock().sent).toEqual([{ t: 'rejoin', code: 'WAND-42', token: 'tok' }, { t: 'create', name: 'Ana' }]);
+  });
+
+  it('drops queued moves for a room that is gone, keeps create and join', () => {
+    const h = harness();
+    h.client.start();
+    h.sock().open();
+    h.sock().receive({ t: 'joined', code: 'WAND-42', seatId: 's1', token: 'tok' });
+    const g = gameMsg(makeGame(['Ana', 'Bob', 'Cleo']), 0);
+    h.sock().receive(g);
+    h.sock().serverClose(1006);
+    h.client.act(g.legal[0]);
+    h.client.join('MOON-11', 'Ana');
+    h.runTimers();
+    h.sock().open();
+    h.sock().receive({ t: 'error', code: 'bad_token', message: 'x' });
+    expect(h.sock().sent).toEqual([{ t: 'rejoin', code: 'WAND-42', token: 'tok' }, { t: 'join', code: 'MOON-11', name: 'Ana' }]);
+  });
+
+  it('flushes held moves after a successful rejoin', () => {
+    const h = harness();
+    h.client.start();
+    h.sock().open();
+    h.sock().receive({ t: 'joined', code: 'WAND-42', seatId: 's1', token: 'tok' });
+    h.sock().serverClose(1006);
+    h.client.leave();
+    h.runTimers();
+    h.sock().open();
+    expect(h.sock().sent).toEqual([{ t: 'rejoin', code: 'WAND-42', token: 'tok' }]);
+    h.sock().receive({ t: 'joined', code: 'WAND-42', seatId: 's1', token: 'tok' });
+    expect(h.sock().sent).toEqual([{ t: 'rejoin', code: 'WAND-42', token: 'tok' }, { t: 'leave' }]);
+  });
 });

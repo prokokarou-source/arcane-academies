@@ -78,6 +78,7 @@ describe('Game end', () => {
       expect(screen.getByRole('columnheader', { name: c })).toBeTruthy();
     }
     expect(screen.getAllByRole('row')).toHaveLength(4);
+    expect(screen.queryByText('Waiting for the others…')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Sell +3' })).toBeNull();
   });
 

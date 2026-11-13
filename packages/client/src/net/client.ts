@@ -52,6 +52,8 @@ export interface ClientState {
   notice: Notice | null;
   /** True after an act was sent until the server answers: blocks double taps. */
   acting: boolean;
+  /** True while a game stored on this phone is being rejoined at startup. */
+  restoring: boolean;
 }
 
 const OPEN = 1;
@@ -72,6 +74,7 @@ const INITIAL: ClientState = {
   error: null,
   notice: null,
   acting: false,
+  restoring: false,
 };
 
 export class GameClient {
@@ -108,7 +111,7 @@ export class GameClient {
   start(): void {
     this.stopped = false;
     this.session = loadSession(this.deps.storage);
-    if (this.session?.hostId) this.set({ hostId: this.session.hostId });
+    this.set({ restoring: !!this.session, ...(this.session?.hostId ? { hostId: this.session.hostId } : {}) });
     this.connect();
   }
 
@@ -147,12 +150,12 @@ export class GameClient {
     this.set({ conn: 'open' });
     const session = this.session;
     if (session) {
+      // Moves made while offline wait until the seat is back (or dropped, see dropSession).
       this.rejoinPending = true;
       this.raw({ t: 'rejoin', code: session.code, token: session.token });
+    } else {
+      this.flushQueue();
     }
-    const q = this.queue;
-    this.queue = [];
-    q.forEach((m) => this.raw(m));
   }
 
   private onClose(code: number): void {
@@ -181,7 +184,7 @@ export class GameClient {
     }
     switch (msg.t) {
       case 'joined':
-        this.rejoinPending = false;
+        this.rejoined();
         {
           const hostId = this.session?.code === msg.code ? this.session.hostId : undefined;
           this.session = { code: msg.code, token: msg.token, ...(hostId ? { hostId } : {}) };
@@ -190,7 +193,7 @@ export class GameClient {
         }
         return;
       case 'lobby':
-        this.rejoinPending = false;
+        this.rejoined();
         this.set({ lobby: msg.lobby, hostId: msg.lobby.hostId, game: null, prevView: null, duels: null, acting: false });
         if (this.session && this.session.hostId !== msg.lobby.hostId) {
           this.session = { ...this.session, hostId: msg.lobby.hostId };
@@ -199,7 +202,7 @@ export class GameClient {
         this.runSoloPlan(msg.lobby);
         return;
       case 'game':
-        this.rejoinPending = false;
+        this.rejoined();
         this.onGame(msg);
         return;
       case 'error':
@@ -208,6 +211,7 @@ export class GameClient {
           this.dropSession('rejoinFailed');
           return;
         }
+        if (this.rejoinPending) this.rejoined();
         this.set({ error: { code: msg.code, message: msg.message }, acting: false });
         return;
       case 'closed':
@@ -223,12 +227,30 @@ export class GameClient {
     this.set({ game: msg, prevView: prev, duels, lobby: null, acting: false });
   }
 
+  private rejoined(): void {
+    if (this.state.restoring) this.set({ restoring: false });
+    if (!this.rejoinPending) return;
+    this.rejoinPending = false;
+    this.flushQueue();
+  }
+
+  private flushQueue(): void {
+    if (!this.ws || this.ws.readyState !== OPEN) return;
+    const q = this.queue;
+    this.queue = [];
+    q.forEach((m) => this.raw(m));
+  }
+
   private dropSession(notice: Notice): void {
     this.session = null;
+    this.rejoinPending = false;
+    // Moves for the lost room are meaningless now; creating or joining a new room still makes sense.
+    this.queue = this.queue.filter((m) => m.t === 'create' || m.t === 'join');
     // Replaced: another tab or device holds the seat now and may share this storage, so leave it alone.
     if (notice !== 'replaced') clearSession(this.deps.storage);
     this.soloPlan = null;
-    this.set({ seatId: null, code: null, hostId: null, lobby: null, game: null, prevView: null, duels: null, acting: false, notice });
+    this.set({ seatId: null, code: null, hostId: null, lobby: null, game: null, prevView: null, duels: null, acting: false, restoring: false, notice });
+    this.flushQueue();
   }
 
   private runSoloPlan(lobby: LobbyState): void {
@@ -246,7 +268,7 @@ export class GameClient {
   }
 
   private send(msg: ClientMessage): void {
-    if (this.ws && this.ws.readyState === OPEN) this.raw(msg);
+    if (this.ws && this.ws.readyState === OPEN && !this.rejoinPending) this.raw(msg);
     else this.queue.push(msg);
   }
 

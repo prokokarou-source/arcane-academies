@@ -4,6 +4,7 @@ import type { LobbySeat } from '@arcane/protocol';
 import { useClient, useClientState, useT, type T } from './context';
 import { LEVELS } from './Home';
 import { Crest } from './Icon';
+import { inviteLink } from '../net/url';
 
 const GRACE = [10_000, 30_000, 60_000, 120_000, 300_000, 600_000];
 const TIMERS = [30_000, 60_000, 90_000, 120_000, 300_000];
@@ -20,11 +21,12 @@ export function Lobby() {
   const isHost = lobby.hostId === seatId;
   const taken = (s: LobbySeat) => new Set(lobby.seats.filter((x) => x.id !== s.id && x.academyId).map((x) => x.academyId));
 
+  const link = inviteLink(lobby.code, location, __LAN_ORIGIN__);
   const share = async () => {
     try {
-      if (navigator.share) await navigator.share({ title: t('appName'), url: lobby.inviteUrl });
+      if (navigator.share) await navigator.share({ title: t('appName'), url: link });
       else {
-        await navigator.clipboard.writeText(lobby.inviteUrl);
+        await navigator.clipboard.writeText(link);
         setCopied(true);
       }
     } catch {
@@ -38,6 +40,9 @@ export function Lobby() {
         <span className="muted">{t('roomCode')}</span>
         <strong className="code">{lobby.code}</strong>
         <button onClick={share}>{copied ? t('linkCopied') : t('shareLink')}</button>
+        <span className="muted small center">
+          {t('inviteHint')} <span className="invite">{link}</span>
+        </span>
       </header>
 
       <ul className="seats">

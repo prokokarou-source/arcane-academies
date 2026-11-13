@@ -17,6 +17,12 @@ export function App({ initialRoom }: { initialRoom?: string }) {
   let screen;
   if (state.game) screen = <Game />;
   else if (state.lobby) screen = <Lobby />;
+  else if (state.restoring)
+    screen = (
+      <main className="screen center">
+        <p className="status">{t('connecting')}</p>
+      </main>
+    );
   else if (page === 'rules') screen = <Rules onBack={() => setPage('home')} />;
   else if (page === 'settings') screen = <Settings onBack={() => setPage('home')} />;
   else screen = <Home initialRoom={initialRoom} onRules={() => setPage('rules')} onSettings={() => setPage('settings')} />;
@@ -38,7 +44,7 @@ export function App({ initialRoom }: { initialRoom?: string }) {
       )}
       {state.error && (
         <div className="banner banner-error" role="alert">
-          <span>{state.error.message}</span>
+          <span>{t(`error_${state.error.code}`)}</span>
           <button className="link" onClick={() => client.clearError()}>
             {t('dismiss')}
           </button>

@@ -227,3 +227,4 @@ select option { background: var(--night-2); color: var(--text); }
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
 .panel.row { flex-direction: row; }
+.invite { color: var(--text); word-break: break-all; }

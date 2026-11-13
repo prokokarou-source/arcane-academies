@@ -82,4 +82,20 @@ describe('Home', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Rules' }));
     expect(screen.getByText(/Three Terms/)).toBeTruthy();
   });
+  it('shows Connecting while a stored game is being restored, then Home if it is gone', () => {
+    const storage = memoryStorage();
+    storage.setItem('arcane.session', JSON.stringify({ code: 'WAND-42', token: 'tok' }));
+    const h = renderApp({ storage });
+    expect(screen.getByText('Connecting…')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Create game' })).toBeNull();
+    act(() => h.sock().receive({ t: 'error', code: 'no_room', message: 'x' }));
+    expect(screen.getByRole('button', { name: 'Create game' })).toBeTruthy();
+  });
+
+  it('explains server errors in its own words', () => {
+    const h = renderApp();
+    act(() => h.sock().receive({ t: 'error', code: 'room_full', message: 'raw server text' }));
+    expect(screen.getByText('That room is full (7 seats).')).toBeTruthy();
+    expect(screen.queryByText('raw server text')).toBeNull();
+  });
 });

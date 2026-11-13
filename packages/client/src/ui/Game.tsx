@@ -33,7 +33,8 @@ export function Game() {
   const nameOf = (seat: number) => seats[seat]?.name ?? view.players[seat].config.name;
 
   let status: string;
-  if (canAct && !acting) status = view.phase === 'bonus' ? t('bonusTurn') : t('pickCard');
+  if (view.phase === 'ended') status = '';
+  else if (canAct && !acting) status = view.phase === 'bonus' ? t('bonusTurn') : t('pickCard');
   else {
     const names = waitingFor(view, seats);
     status = names === null ? t('waitingBonus') : names.length ? t('waitingFor', { names: names.join(', ') }) : t('waitingOthers');

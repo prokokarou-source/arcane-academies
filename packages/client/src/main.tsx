@@ -2,6 +2,8 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { GameClient, type SocketLike } from './net/client';
 import { defaultServerUrl } from './net/url';
+import { PwaProvider, type Pwa } from './pwa/context';
+import { createConnectivity, createInstall, createUpdate } from './pwa/install';
 import { App } from './ui/App';
 import { ClientProvider } from './ui/context';
 import './styles.css';
@@ -20,10 +22,20 @@ client.start();
 const room = new URLSearchParams(location.search).get('room') ?? undefined;
 if (room) history.replaceState(null, '', location.pathname);
 
+const pwa: Pwa = { install: createInstall(window, localStorage), update: createUpdate(), online: createConnectivity(window) };
+// The service worker only exists in the production build; a waiting update is offered as "Reload".
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  void import('virtual:pwa-register').then(({ registerSW }) => {
+    const updateSW = registerSW({ onNeedRefresh: () => pwa.update.ready(() => void updateSW(true)) });
+  });
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <ClientProvider client={client} storage={localStorage}>
-      <App initialRoom={room} />
-    </ClientProvider>
+    <PwaProvider pwa={pwa}>
+      <ClientProvider client={client} storage={localStorage}>
+        <App initialRoom={room} />
+      </ClientProvider>
+    </PwaProvider>
   </StrictMode>,
 );

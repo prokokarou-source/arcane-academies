@@ -16,6 +16,8 @@ function site(): string {
   mkdirSync(join(dir, 'assets'));
   writeFileSync(join(dir, 'assets', 'app-123.js'), 'console.log(1)');
   writeFileSync(join(dir, 'manifest.webmanifest'), '{}');
+  writeFileSync(join(dir, 'sw.js'), 'self.addEventListener("fetch", () => {})');
+  writeFileSync(join(dir, 'icon-192.png'), 'png');
   return dir;
 }
 
@@ -36,6 +38,18 @@ describe('serving the web client', () => {
     expect(js.headers.get('cache-control')).toContain('immutable');
     expect((await fetch(base + '/manifest.webmanifest')).headers.get('content-type')).toContain('manifest+json');
     expect(await (await fetch(base + '/health')).json()).toMatchObject({ ok: true });
+  });
+
+  it('serves the service worker and manifest without a long cache, so new deploys are picked up', async () => {
+    const base = await boot(site());
+    const sw = await fetch(base + '/sw.js');
+    expect(sw.status).toBe(200);
+    expect(sw.headers.get('content-type')).toContain('javascript');
+    expect(sw.headers.get('cache-control')).toBe('no-cache');
+    const manifest = await fetch(base + '/manifest.webmanifest');
+    expect(manifest.headers.get('content-type')).toBe('application/manifest+json');
+    expect(manifest.headers.get('cache-control')).toBe('no-cache');
+    expect((await fetch(base + '/icon-192.png')).headers.get('content-type')).toBe('image/png');
   });
 
   it('answers invite links and unknown pages with the app, but missing assets with 404', async () => {

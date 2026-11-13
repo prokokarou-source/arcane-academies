@@ -26,6 +26,13 @@ export const en = {
   notice_left: 'You left the room.',
   notice_removed: 'The host removed you from the room.',
   notice_rejoinFailed: 'Your last game is no longer available.',
+  // installed app
+  installApp: 'Install app',
+  iosHint: 'Play full screen: tap Share, then Add to Home Screen.',
+  gotIt: 'Got it',
+  updateReady: 'A new version is ready.',
+  reload: 'Reload',
+  offlineBar: "You're offline. Check your connection to keep playing.",
   // lobby
   lobby: 'Lobby',
   shareLink: 'Share link',

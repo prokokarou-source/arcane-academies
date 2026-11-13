@@ -1,1 +1,22 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#6b3fd4"/><path d="M32 8 44 52H20Z" fill="#f6f3fb"/><circle cx="32" cy="22" r="5" fill="#d9a520"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="42%" r="60%">
+      <stop offset="0" stop-color="#3a2a6e"/>
+      <stop offset="1" stop-color="#17112e"/>
+    </radialGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#glow)"/>
+  
+  <g transform="translate(256 256) scale(1) translate(-256 -256)">
+    <path d="M256 52 418 104v128c0 112-72 182-162 228C166 414 94 344 94 232V104Z" fill="#17112e" stroke="#e8b54a" stroke-width="16" stroke-linejoin="round"/>
+    <path d="M256 74 398 120v112c0 98-62 160-142 202-80-42-142-104-142-202V120Z" fill="none" stroke="#e8b54a" stroke-opacity=".35" stroke-width="4"/>
+    <path d="M256 112l14 38 40 2-31 25 11 39-34-22-34 22 11-39-31-25 40-2Z" fill="#e8b54a"/>
+    <path d="M256 268c-30-20-66-26-104-22v118c38-4 74 2 104 22Z" fill="#f6efe0"/>
+    <path d="M256 268c30-20 66-26 104-22v118c-38-4-74 2-104 22Z" fill="#f6efe0"/>
+    <path d="M256 268v118" stroke="#e8b54a" stroke-width="6" stroke-linecap="round"/>
+    <path d="M176 280c24-2 46 2 64 12M176 306c24-2 46 2 64 12M176 332c24-2 46 2 64 12M336 280c-24-2-46 2-64 12M336 306c-24-2-46 2-64 12M336 332c-24-2-46 2-64 12" stroke="#b9a37a" stroke-width="6" stroke-linecap="round" fill="none"/>
+    <circle cx="186" cy="200" r="5" fill="#f6efe0" opacity=".8"/>
+    <circle cx="330" cy="190" r="4" fill="#f6efe0" opacity=".7"/>
+    <circle cx="214" cy="160" r="3" fill="#f6efe0" opacity=".6"/>
+  </g>
+</svg>

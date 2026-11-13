@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useOnline, useUpdate } from '../pwa/context';
 import { useClient, useClientState, useT } from './context';
 import { Game } from './Game';
 import { Home } from './Home';
@@ -13,6 +14,8 @@ export function App({ initialRoom }: { initialRoom?: string }) {
   const client = useClient();
   const t = useT();
   const [page, setPage] = useState<Page>('home');
+  const online = useOnline();
+  const update = useUpdate();
 
   let screen;
   if (state.game) screen = <Game />;
@@ -29,9 +32,23 @@ export function App({ initialRoom }: { initialRoom?: string }) {
 
   return (
     <div className="app">
-      {state.conn === 'reconnecting' && (
+      {!online ? (
         <div className="bar bar-warn" role="status">
-          {t('reconnecting')}
+          {t('offlineBar')}
+        </div>
+      ) : (
+        state.conn === 'reconnecting' && (
+          <div className="bar bar-warn" role="status">
+            {t('reconnecting')}
+          </div>
+        )
+      )}
+      {update.ready && (
+        <div className="banner" role="status">
+          <span>{t('updateReady')}</span>
+          <button className="link" onClick={update.apply}>
+            {t('reload')}
+          </button>
         </div>
       )}
       {state.notice && (

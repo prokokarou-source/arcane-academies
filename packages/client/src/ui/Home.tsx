@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ACADEMIES, type BotLevel } from '@arcane/engine';
 import { MAX_NAME } from '@arcane/protocol';
+import { useInstall } from '../pwa/context';
 import { useClient, usePrefs, useT } from './context';
 import { Crest } from './Icon';
 
@@ -14,6 +15,7 @@ export function Home(props: { initialRoom?: string; onRules(): void; onSettings(
   const [code, setCode] = useState((props.initialRoom ?? '').toUpperCase());
   const [bots, setBots] = useState(3);
   const [level, setLevel] = useState<BotLevel>('normal');
+  const install = useInstall();
 
   const trimmed = name.trim();
   const nameOk = trimmed.length > 0 && trimmed.length <= MAX_NAME;
@@ -104,6 +106,20 @@ export function Home(props: { initialRoom?: string; onRules(): void; onSettings(
           {t('playSolo')}
         </button>
       </section>
+
+      {install.canInstall && (
+        <section className="panel">
+          <button onClick={install.install}>{t('installApp')}</button>
+        </section>
+      )}
+      {install.iosHint && (
+        <div className="banner" role="note">
+          <span>{t('iosHint')}</span>
+          <button className="link" onClick={install.dismissIosHint}>
+            {t('gotIt')}
+          </button>
+        </div>
+      )}
 
       <nav className="row links">
         <button className="link" onClick={props.onRules}>

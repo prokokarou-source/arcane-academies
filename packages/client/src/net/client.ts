@@ -14,6 +14,7 @@ export interface SocketLike {
   onopen: (() => void) | null;
   onmessage: ((ev: { data: unknown }) => void) | null;
   onclose: ((ev: { code: number }) => void) | null;
+  onerror?: ((ev: unknown) => void) | null;
 }
 
 export interface ClientDeps {
@@ -130,6 +131,8 @@ export class GameClient {
     ws.onmessage = (ev) => {
       if (ws === this.ws) this.onMessage(ev.data);
     };
+    // Errors are always followed by a close event, which does the work.
+    ws.onerror = () => {};
     ws.onclose = (ev) => {
       if (ws === this.ws) this.onClose(ev.code);
     };

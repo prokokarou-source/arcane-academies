@@ -7,6 +7,7 @@ export class FakeSocket implements SocketLike {
   onopen: (() => void) | null = null;
   onmessage: ((ev: { data: unknown }) => void) | null = null;
   onclose: ((ev: { code: number }) => void) | null = null;
+  onerror: ((ev: unknown) => void) | null = null;
   constructor(public url: string) {}
   send(data: string) {
     if (this.readyState !== 1) throw new Error('not open');

@@ -8,6 +8,7 @@ An original card-drafting game for 2–7 players: rival schools of magic, each p
 | `packages/sim` | Bot-vs-bot balance simulator (`npm run sim`) |
 | `packages/protocol` | Typed WebSocket messages shared by server and client |
 | `packages/server` | Authoritative multiplayer game server |
+| `packages/client` | Mobile web client (React + Vite) |
 
 Requires Node 20+. Install once with `npm install`.
 
@@ -42,3 +43,34 @@ Settings (environment variables):
 4. If a phone drops, it reconnects with `{ "t": "rejoin", "code", "token" }`. After the grace period a bot plays the seat until the player returns.
 
 All message types are in `packages/protocol/src/index.ts`.
+
+## Running the web client
+
+Start the server and the client in two terminals:
+
+```bash
+npm run server
+```
+
+```bash
+npm run client
+```
+
+Open http://localhost:5173. The client connects to `ws://<page host>:8787`; set `VITE_SERVER_URL` to use another server.
+
+**Playing from phones on the same Wi-Fi:** open `http://<your PC's IP>:5173` on each phone (Vite listens on all interfaces). Start the server with `CLIENT_URL=http://<your PC's IP>:5173` so the lobby's share link points at the client.
+
+Screens:
+
+- **Home:** your name, create a game, join with a room code (or open an invite link `?room=WAND-42`), play solo against 1–6 bots, rules, settings (name, language, animations, sound, haptics).
+- **Lobby:** room code and share link, seats (person or bot with level), academy (or random) and side A/B. The host adds and removes bots, sets the bot takeover time and an optional turn timer, and starts.
+- **Game:** Term, turn, coins and turn countdown; both neighbors (tap to inspect, or open the whole table); your production, duel power, research and tower; your hand as swipeable cards that show whether each card is free by chain, affordable, or needs trading and for how much; Build / Tower / Sell (and Keep for Chronomancy). The payment is the server's cheapest plan.
+- **Term end:** your duels against both neighbors. **Game end:** score breakdown per category, the winner, rematch.
+
+The phone keeps its seat token, so reloading the page or losing the connection rejoins the same game automatically.
+
+Production build (into `packages/client/dist`):
+
+```bash
+npx vite build packages/client
+```

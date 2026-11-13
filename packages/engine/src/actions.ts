@@ -1,7 +1,7 @@
 import type { Action, Card, CountTarget, GameState, PaymentPlan, PlayerState, Term } from './types';
 import { cardDef } from './data/cards';
 import { academyDef } from './data/academies';
-import { leftOf, planPayment, rightOf } from './payment';
+import { leftOf, planPayment, rightOf, validatePayment } from './payment';
 import { applyPowerOnBuild, hasPower } from './powers';
 import { resolveDuels } from './duels';
 import { dealTerm } from './setup';
@@ -48,10 +48,21 @@ export function legalActions(s: GameState, seat: number): Action[] {
   return out;
 }
 
-/** Lock in the pick of a seat for this turn. Throws IllegalActionError unless it is one of legalActions. */
+/**
+ * Lock in the pick of a seat for this turn. The action type and card must be offered by legalActions;
+ * for build/tower any valid payment plan is accepted (players may edit trades). Throws IllegalActionError otherwise.
+ */
 export function submitAction(s: GameState, seat: number, action: Action): GameState {
-  const key = JSON.stringify(action);
-  if (!legalActions(s, seat).some((a) => JSON.stringify(a) === key)) {
+  const offered = legalActions(s, seat).some((a) => a.type === action.type && a.cardUid === action.cardUid);
+  let ok = offered;
+  if (ok && (action.type === 'build' || action.type === 'tower')) {
+    const p = s.players[seat];
+    const card = cardsInPlay(s, seat).find((c) => c.uid === action.cardUid)!;
+    const def = cardDef(card.defId);
+    const cost = action.type === 'build' ? def.cost : academyDef(p.academyId).sides[p.side][p.towerStages].cost;
+    ok = validatePayment(s, seat, cost, action.type === 'build' ? def.chainFrom : undefined, action.payment);
+  }
+  if (!ok) {
     throw new IllegalActionError(`Seat ${seat} cannot ${action.type} ${action.cardUid}`);
   }
   return { ...s, players: s.players.map((p) => (p.seat === seat ? { ...p, pending: action } : p)) };
@@ -122,6 +133,11 @@ export function resolveTurn(s: GameState): GameState {
       }
     }
     p.pending = undefined;
+  }
+
+  const spent = s.players.map((p) => (p.pending && 'payment' in p.pending ? paid(p.pending.payment) : 0));
+  if (s.players.some((p, i) => spent[i] > p.coins)) {
+    throw new IllegalActionError('A pending action spends more coins than the seat had at the start of the turn');
   }
 
   let next: GameState = { ...s, players: players.map((p, i) => ({ ...p, coins: coins[i] })), kept, archive, log };

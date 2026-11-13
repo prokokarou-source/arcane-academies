@@ -111,3 +111,64 @@ export function planPayment(s: GameState, seat: number, cost: Cost, chainFrom?: 
   });
   return plan;
 }
+
+/** True when the produce effects can supply every unit (each choice producer picks one resource). */
+function canCover(list: Produce[], units: Resource[]): boolean {
+  const slots = list.map((e) => ({ options: e.options, remaining: e.amount, chosen: e.options.length === 1 ? e.options[0] : undefined as Resource | undefined }));
+  const dfs = (i: number): boolean => {
+    if (i === units.length) return true;
+    const r = units[i];
+    for (const sl of slots) {
+      if (sl.remaining <= 0 || !sl.options.includes(r) || (sl.chosen && sl.chosen !== r)) continue;
+      const prev = sl.chosen;
+      sl.remaining--;
+      sl.chosen = r;
+      if (dfs(i + 1)) return true;
+      sl.chosen = prev;
+      sl.remaining++;
+    }
+    return false;
+  };
+  return dfs(0);
+}
+
+const expand = (rec: Partial<Record<Resource, number>>): Resource[] | null => {
+  const out: Resource[] = [];
+  for (const [r, n] of Object.entries(rec) as [Resource, number][]) {
+    if (!Number.isInteger(n) || n < 0) return null;
+    for (let i = 0; i < n; i++) out.push(r);
+  }
+  return out;
+};
+
+/**
+ * Check a payment plan chosen by a player (it need not be the cheapest one, so trades can be edited).
+ * Valid when: bank coins match the cost, each purchase is within the neighbor's buyable production at the
+ * correct price, purchases do not exceed the cost, own production covers the rest, and the seat can afford it.
+ */
+export function validatePayment(s: GameState, seat: number, cost: Cost, chainFrom: string[] | undefined, plan: PaymentPlan): boolean {
+  const p = s.players[seat];
+  const noTrade = plan.coinsToLeft === 0 && plan.coinsToRight === 0 && !expand(plan.buyLeft)?.length && !expand(plan.buyRight)?.length;
+  if (plan.free) {
+    const owned = new Set(p.built.map((c) => cardDef(c.defId).name));
+    return !!chainFrom?.some((n) => owned.has(n)) && plan.coinsToBank === 0 && noTrade;
+  }
+  if (plan.coinsToBank !== (cost.coins ?? 0)) return false;
+  const need: Partial<Record<Resource, number>> = { ...(cost.resources ?? {}) };
+  for (const side of ['left', 'right'] as const) {
+    const bought = expand(side === 'left' ? plan.buyLeft : plan.buyRight);
+    if (!bought) return false;
+    const neighbor = side === 'left' ? leftOf(s, seat) : rightOf(s, seat);
+    if (neighbor === seat && bought.length) return false;
+    const price = bought.reduce((sum, r) => sum + tradePrice(s, seat, side, r), 0);
+    if (price !== (side === 'left' ? plan.coinsToLeft : plan.coinsToRight)) return false;
+    if (!canCover(productionOf(s, neighbor, true), bought)) return false;
+    for (const r of bought) {
+      need[r] = (need[r] ?? 0) - 1;
+      if ((need[r] ?? 0) < 0) return false;
+    }
+  }
+  const rest = expand(need);
+  if (!rest || !canCover(productionOf(s, seat, false), rest)) return false;
+  return plan.coinsToBank + plan.coinsToLeft + plan.coinsToRight <= p.coins;
+}

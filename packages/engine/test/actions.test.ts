@@ -125,3 +125,57 @@ describe('actions', () => {
     expect(s.players[0].coins).toBe(3 + 4);
   });
 });
+
+describe('final review fixes', () => {
+  it('accepts an alternative valid payment from the other side at the same price', () => {
+    let s = withBuilt(fixedGame(), 0, ['t1-iron-seam']);
+    s = withBuilt(s, 2, ['t1-iron-seam']);
+    s = withHand(s, 1, ['t1-practice-yard', ...fill('t1-alms-box')]);
+    const offered = find(s, 1, 'build', 't1-practice-yard');
+    expect(offered.type === 'build' && offered.payment.buyLeft).toEqual({ ore: 1 });
+    const alt: Action = {
+      type: 'build',
+      cardUid: offered.cardUid,
+      payment: { free: false, coinsToBank: 0, coinsToRight: 2, coinsToLeft: 0, buyRight: { ore: 1 }, buyLeft: {} },
+    };
+    s = resolveTurn(sellAll(submitAction(s, 1, alt), [1]));
+    expect(s.players[2].coins).toBe(3 + 3 + 2);
+  });
+
+  it('rejects an invalid payment', () => {
+    const s = withHand(fixedGame(), 0, ['t1-candle-chapel', ...fill('t1-alms-box')]);
+    const offered = find(s, 0, 'build', 't1-candle-chapel');
+    const under: Action = { ...offered, payment: { ...(offered as Extract<Action, { type: 'build' }>).payment, coinsToLeft: 0 } } as Action;
+    expect(() => submitAction(s, 0, under)).toThrow(IllegalActionError);
+    const phantom: Action = { ...offered, payment: { free: false, coinsToBank: 0, coinsToLeft: 0, coinsToRight: 0, buyLeft: {}, buyRight: {} } } as Action;
+    expect(() => submitAction(s, 0, phantom)).toThrow(IllegalActionError);
+  });
+
+  it('a coin received this turn cannot fund a purchase in the same turn', () => {
+    // seat0 (3 coins) buys herbs from seat2 (left, 0 coins). seat2 cannot buy ore from seat0 with that money.
+    let s = withCoins(fixedGame(), 2, 0);
+    s = withHand(s, 0, ['t1-candle-chapel', ...fill('t1-alms-box')]);
+    s = withHand(s, 2, ['t1-practice-yard', ...fill('t1-alms-box')]);
+    s = submitAction(s, 0, find(s, 0, 'build', 't1-candle-chapel'));
+    const crafted: Action = {
+      type: 'build',
+      cardUid: s.players[2].hand[0].uid,
+      payment: { free: false, coinsToBank: 0, coinsToLeft: 0, coinsToRight: 2, buyLeft: {}, buyRight: { ore: 1 } },
+    };
+    expect(() => submitAction(s, 2, crafted)).toThrow(IllegalActionError);
+    s = resolveTurn(sellAll(s, [0]));
+    expect(s.players[2].coins).toBe(0 + 3 + 2);
+  });
+
+  it('resolveTurn refuses a pending action that would make coins negative', () => {
+    const s = fixedGame();
+    const bad = {
+      ...s,
+      players: s.players.map((p) => ({
+        ...p,
+        pending: { type: 'build', cardUid: p.hand[0].uid, payment: { free: false, coinsToBank: 9, coinsToLeft: 0, coinsToRight: 0, buyLeft: {}, buyRight: {} } } as Action,
+      })),
+    };
+    expect(() => resolveTurn(bad)).toThrow(IllegalActionError);
+  });
+});

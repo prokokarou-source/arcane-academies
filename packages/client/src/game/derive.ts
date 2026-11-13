@@ -67,6 +67,11 @@ export function towerOf(p: PublicPlayer): { built: number; total: number; next?:
   return { built: p.towerStages, total: stages.length, ...(next ? { next } : {}) };
 }
 
+/** Every level of this player's tower, in order, with whether it is built. */
+export function towerStagesOf(p: PublicPlayer): (TowerStage & { built: boolean })[] {
+  return academyDef(p.academyId).sides[p.side].map((st, i) => ({ ...st, built: i < p.towerStages }));
+}
+
 /** Duel tokens added per seat between two views, or null when no Term ended in between (all ties still count as a Term end). */
 export function termDuels(prev: PlayerView | null, next: PlayerView): { seat: number; deltas: number[] }[] | null {
   if (!prev || prev.players.length !== next.players.length) return null;

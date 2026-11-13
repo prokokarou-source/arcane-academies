@@ -1,8 +1,8 @@
 import { academyDef, cardDef, type Family, type PublicPlayer } from '@arcane/engine';
 import type { SeatStatus } from '@arcane/protocol';
-import { duelPowerOf, productionOf, researchOf, towerOf } from '../game/derive';
+import { duelPowerOf, productionOf, researchOf, towerOf, towerStagesOf } from '../game/derive';
 import { useT } from './context';
-import { DISCIPLINE_ICON, effectLabel, FAMILY_COLOR } from './icons';
+import { costLabel, DISCIPLINE_ICON, effectLabel, FAMILY_COLOR } from './icons';
 
 const ORDER: Family[] = ['basic', 'rare', 'lore', 'trade', 'duel', 'research', 'patron'];
 
@@ -33,6 +33,20 @@ export function PlayerPanel(props: { player: PublicPlayer; status?: SeatStatus; 
           <dt>{t('production')}</dt>
           <dd>{productionOf(p).map((x) => effectLabel({ kind: 'produce', ...x })).join('  ')}</dd>
         </dl>
+        <h4>{t('tower')}</h4>
+        <ol className="levels">
+          {towerStagesOf(p).map((st, i) => (
+            <li key={i} className={st.built ? 'done' : ''}>
+              <div className="level-top">
+                <strong>{t('towerLevel', { n: i + 1 })}</strong>
+                {st.built && <span className="tag">{`✓ ${t('built')}`}</span>}
+                <span className="level-cost">{costLabel(st.cost)}</span>
+              </div>
+              {st.effects.length > 0 && <span>{st.effects.map(effectLabel).join('  ')}</span>}
+              {st.power && <span className="muted small">{t(`power_${st.power}`)}</span>}
+            </li>
+          ))}
+        </ol>
         <h4>{t('built')}</h4>
         {built.length === 0 ? (
           <p className="muted small">{t('noCards')}</p>

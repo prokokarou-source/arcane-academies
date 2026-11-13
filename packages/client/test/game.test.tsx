@@ -96,6 +96,25 @@ describe('Game screen', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
+  it('shows the next tower level cost in my area', () => {
+    inGame(gameMsg(s, 0));
+    expect(screen.getByText('Next level: ⛏️⛏️')).toBeTruthy();
+  });
+
+  it('my panel lists all three tower levels with cost and reward', () => {
+    inGame(gameMsg(s, 0));
+    fireEvent.click(screen.getByRole('button', { name: /Next level/ }));
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByText('Level 1')).toBeTruthy();
+    expect(within(dialog).getByText('Level 2')).toBeTruthy();
+    expect(within(dialog).getByText('Level 3')).toBeTruthy();
+    expect(within(dialog).getByText('⛏️⛏️')).toBeTruthy();
+    expect(within(dialog).getByText('🌿🌿 ✨')).toBeTruthy();
+    expect(within(dialog).getByText('+3 ★')).toBeTruthy();
+    expect(within(dialog).getByText('+7 ★')).toBeTruthy();
+    expect(within(dialog).getByText('Each duel you win gives +1 extra Renown.')).toBeTruthy();
+  });
+
   it('shows the deadline countdown', () => {
     inGame(gameMsg(s, 0, { deadline: Date.now() + 30_000 }));
     expect(screen.getByText(/^(29|30) s left$/)).toBeTruthy();

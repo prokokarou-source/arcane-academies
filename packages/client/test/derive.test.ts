@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { legalActions, viewFor } from '@arcane/engine';
-import { duelPowerOf, handOptions, neighbors, productionOf, termDuels, tradeCost, waitingFor } from '../src/game/derive';
+import { towerStagesOf, duelPowerOf, handOptions, neighbors, productionOf, termDuels, tradeCost, waitingFor } from '../src/game/derive';
 import { makeGame, seatsOf } from './views';
 
 describe('derive', () => {
@@ -33,6 +33,15 @@ describe('derive', () => {
   it('reads duel power and production from a player', () => {
     expect(duelPowerOf(view.players[0])).toBe(0);
     expect(productionOf(view.players[0])).toEqual([{ options: ['ore'], amount: 1 }]);
+  });
+
+  it('lists every tower level with its cost, reward and whether it is built', () => {
+    const stages = towerStagesOf({ ...view.players[0], towerStages: 1 });
+    expect(stages).toHaveLength(3);
+    expect(stages.map((x) => x.built)).toEqual([true, false, false]);
+    expect(stages[0].cost).toEqual({ resources: { ore: 2 } });
+    expect(stages[1].power).toBe('pyroDuelBonus');
+    expect(stages[2].effects).toEqual([{ kind: 'renown', amount: 7 }]);
   });
 
   it('sums the trade cost of both sides', () => {

@@ -5,7 +5,7 @@ import { duelPowerOf, handOptions, neighbors, productionOf, researchOf, towerOf,
 import { CardView } from './CardView';
 import { useClient, useClientState, useT } from './context';
 import { Deadline } from './Deadline';
-import { COIN, DISCIPLINE_ICON, DUEL, effectLabel } from './icons';
+import { COIN, costLabel, DISCIPLINE_ICON, DUEL, effectLabel } from './icons';
 import { GameEnd } from './GameEnd';
 import { PlayerPanel } from './PlayerPanel';
 import { ROMAN, TermEnd } from './TermEnd';
@@ -65,6 +65,9 @@ export function Game() {
           <span>{Object.entries(research).map(([d, n]) => `${DISCIPLINE_ICON[d as keyof typeof research]}${n}`).join(' ')}</span>
           <span>{`${t('tower')} ${t('stageOf', { built: tower.built, total: tower.total })}`}</span>
           <span>{`${t('built')} ${me.built.length}`}</span>
+        </span>
+        <span className="me-row small">
+          <span>{tower.next ? t('nextLevel', { cost: costLabel(tower.next.cost) }) : t('towerDone')}</span>
         </span>
       </button>
 

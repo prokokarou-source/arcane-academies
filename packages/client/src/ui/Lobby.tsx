@@ -3,6 +3,7 @@ import { ACADEMIES, type BotLevel } from '@arcane/engine';
 import type { LobbySeat } from '@arcane/protocol';
 import { useClient, useClientState, useT, type T } from './context';
 import { LEVELS } from './Home';
+import { Crest } from './Icon';
 
 const GRACE = [10_000, 30_000, 60_000, 120_000, 300_000, 600_000];
 const TIMERS = [30_000, 60_000, 90_000, 120_000, 300_000];
@@ -49,6 +50,7 @@ export function Lobby() {
             <li key={s.id} className="seat">
               <div className="seat-top">
                 <span className={`dot ${s.connected ? 'on' : 'off'}`} title={s.connected ? '' : t('offline')} />
+                {s.academyId && <Crest academyId={s.academyId} size={24} />}
                 <span className="name">{s.name}</span>
                 {mine && <span className="tag">{t('you')}</span>}
                 {s.id === lobby.hostId && <span className="tag">{t('host')}</span>}

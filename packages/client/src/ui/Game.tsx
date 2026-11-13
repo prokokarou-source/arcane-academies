@@ -6,7 +6,8 @@ import { CardInfo } from './CardInfo';
 import { CardView } from './CardView';
 import { useClient, useClientState, useT } from './context';
 import { Deadline } from './Deadline';
-import { COIN, costLabel, DISCIPLINE_ICON, DUEL, effectLabel } from './icons';
+import { CostView, EffectView, ResearchView } from './Glyphs';
+import { Crest, Icon } from './Icon';
 import { GameEnd } from './GameEnd';
 import { PlayerPanel } from './PlayerPanel';
 import { ROMAN, TermEnd } from './TermEnd';
@@ -49,7 +50,10 @@ export function Game() {
         <span>{t('term', { n: ROMAN[view.term - 1] })}</span>
         <span>{t('turn', { n: view.turn })}</span>
         {game.deadline !== null && view.phase !== 'ended' && <Deadline deadline={game.deadline} />}
-        <span className="coins" aria-label={t('coins')}>{`${me.coins} ${COIN}`}</span>
+        <span className="coins num" aria-label={t('coins')}>
+          {me.coins}
+          <Icon name="coin" />
+        </span>
       </header>
 
       <section className="neighbors">
@@ -61,15 +65,32 @@ export function Game() {
       </section>
 
       <button className="me" onClick={() => setInspect(view.me)}>
-        <span className="me-row">{productionOf(me).map((x, i) => <span key={i} className="res">{effectLabel({ kind: 'produce', ...x })}</span>)}</span>
+        <span className="me-row">
+          <Crest academyId={me.academyId} size={30} />
+          {productionOf(me).map((x, i) => (
+            <span key={i} className="res">
+              <EffectView effect={{ kind: 'produce', ...x }} />
+            </span>
+          ))}
+        </span>
         <span className="me-row small">
-          <span>{`${DUEL} ${duelPowerOf(me)}`}</span>
-          <span>{Object.entries(research).map(([d, n]) => `${DISCIPLINE_ICON[d as keyof typeof research]}${n}`).join(' ')}</span>
+          <span className="num">
+            <Icon name="duel" />
+            {duelPowerOf(me)}
+          </span>
+          <ResearchView counts={research} />
           <span>{`${t('tower')} ${t('stageOf', { built: tower.built, total: tower.total })}`}</span>
           <span>{`${t('built')} ${me.built.length}`}</span>
         </span>
         <span className="me-row small">
-          <span>{tower.next ? t('nextLevel', { cost: costLabel(tower.next.cost) }) : t('towerDone')}</span>
+          {tower.next ? (
+            <span className="glyphs">
+              {t('nextLevelLabel')}
+              <CostView cost={tower.next.cost} />
+            </span>
+          ) : (
+            <span>{t('towerDone')}</span>
+          )}
         </span>
       </button>
 
@@ -90,7 +111,13 @@ export function Game() {
       {canAct && (
         <div className="actions">
           <button className="primary" disabled={!build || acting} onClick={() => build && client.act(build)}>
-            {buildCost > 0 ? `${t('build')} (${buildCost} ${COIN})` : t('build')}
+            {t('build')}
+            {buildCost > 0 && (
+              <span className="num cost-chip">
+                {buildCost}
+                <Icon name="coin" />
+              </span>
+            )}
           </button>
           <button disabled={!current?.tower || acting} onClick={() => current?.tower && client.act(current.tower)}>
             {t('raiseTower')}
@@ -133,9 +160,23 @@ function Neighbor(props: { side: string; player: PublicPlayer; status?: SeatStat
     .join(' · ');
   return (
     <button className="neighbor" onClick={props.onClick}>
-      <span className="muted small">{props.side}</span>
+      <span className="neighbor-top">
+        <Crest academyId={p.academyId} size={22} />
+        <span className="muted small">{props.side}</span>
+        {p.hasSubmitted && <span className="ready">✓</span>}
+      </span>
       <span className="name">{name}</span>
-      <span className="small">{`${p.coins}${COIN} ${DUEL}${duelPowerOf(p)} ▦${p.built.length}${p.hasSubmitted ? ' ✓' : ''}`}</span>
+      <span className="small glyphs">
+        <span className="num">
+          {p.coins}
+          <Icon name="coin" />
+        </span>
+        <span className="num">
+          {duelPowerOf(p)}
+          <Icon name="duel" />
+        </span>
+        <span className="num">▦{p.built.length}</span>
+      </span>
       {tags && <span className="tag">{tags}</span>}
     </button>
   );

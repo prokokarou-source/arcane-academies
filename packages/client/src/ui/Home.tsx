@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import type { BotLevel } from '@arcane/engine';
+import { ACADEMIES, type BotLevel } from '@arcane/engine';
 import { MAX_NAME } from '@arcane/protocol';
 import { useClient, usePrefs, useT } from './context';
+import { Crest } from './Icon';
 
 export const LEVELS: BotLevel[] = ['easy', 'normal', 'hard'];
 
@@ -25,6 +26,11 @@ export function Home(props: { initialRoom?: string; onRules(): void; onSettings(
       <header className="hero">
         <h1>{t('appName')}</h1>
         <p>{t('tagline')}</p>
+        <div className="crest-arc" aria-hidden="true">
+          {ACADEMIES.map((a) => (
+            <Crest key={a.id} academyId={a.id} size={38} />
+          ))}
+        </div>
       </header>
 
       <label className="field">

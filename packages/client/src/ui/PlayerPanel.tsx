@@ -2,7 +2,9 @@ import { academyDef, cardDef, type Family, type PublicPlayer } from '@arcane/eng
 import type { SeatStatus } from '@arcane/protocol';
 import { duelPowerOf, productionOf, researchOf, towerOf, towerStagesOf } from '../game/derive';
 import { useT } from './context';
-import { costLabel, DISCIPLINE_ICON, effectLabel, FAMILY_COLOR } from './icons';
+import { CostView, EffectsView, EffectView, ResearchView } from './Glyphs';
+import { Crest } from './Icon';
+import { FAMILY_COLOR } from './icons';
 
 const ORDER: Family[] = ['basic', 'rare', 'lore', 'trade', 'duel', 'research', 'patron'];
 
@@ -18,6 +20,7 @@ export function PlayerPanel(props: { player: PublicPlayer; status?: SeatStatus; 
     <div className="sheet-backdrop" onClick={props.onClose}>
       <section className="sheet" role="dialog" aria-label={name} onClick={(e) => e.stopPropagation()}>
         <header className="sheet-head">
+          <Crest academyId={p.academyId} size={44} />
           <h3>{name}</h3>
           <span className="muted small">{`${academyDef(p.academyId).name} · ${t('side')} ${p.side}`}</span>
         </header>
@@ -29,9 +32,15 @@ export function PlayerPanel(props: { player: PublicPlayer; status?: SeatStatus; 
           <dt>{t('tower')}</dt>
           <dd>{t('stageOf', { built: tower.built, total: tower.total })}</dd>
           <dt>{t('research')}</dt>
-          <dd>{Object.entries(research).map(([d, n]) => `${DISCIPLINE_ICON[d as keyof typeof research]}${n}`).join(' ')}</dd>
+          <dd>
+            <ResearchView counts={research} />
+          </dd>
           <dt>{t('production')}</dt>
-          <dd>{productionOf(p).map((x) => effectLabel({ kind: 'produce', ...x })).join('  ')}</dd>
+          <dd className="effects-row">
+            {productionOf(p).map((x, i) => (
+              <EffectView key={i} effect={{ kind: 'produce', ...x }} />
+            ))}
+          </dd>
         </dl>
         <h4>{t('tower')}</h4>
         <ol className="levels">
@@ -40,9 +49,11 @@ export function PlayerPanel(props: { player: PublicPlayer; status?: SeatStatus; 
               <div className="level-top">
                 <strong>{t('towerLevel', { n: i + 1 })}</strong>
                 {st.built && <span className="tag">{`✓ ${t('built')}`}</span>}
-                <span className="level-cost">{costLabel(st.cost)}</span>
+                <span className="level-cost">
+                  <CostView cost={st.cost} />
+                </span>
               </div>
-              {st.effects.length > 0 && <span>{st.effects.map(effectLabel).join('  ')}</span>}
+              {st.effects.length > 0 && <EffectsView effects={st.effects} />}
               {st.power && <span className="muted small">{t(`power_${st.power}`)}</span>}
             </li>
           ))}

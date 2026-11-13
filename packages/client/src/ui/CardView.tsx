@@ -1,7 +1,7 @@
 import { cardDef } from '@arcane/engine';
 import { bankCost, tradeCost, type CardOptions } from '../game/derive';
 import { useT } from './context';
-import { costLabel, effectLabel } from './icons';
+import { CostView, EffectsView } from './Glyphs';
 
 export function CardView(props: { opt: CardOptions; selected: boolean; onSelect(): void; onInfo(): void }) {
   const t = useT();
@@ -25,8 +25,12 @@ export function CardView(props: { opt: CardOptions; selected: boolean; onSelect(
       onClick={props.onSelect}
     >
       <span className="card-name">{def.name}</span>
-      <span className="card-cost">{costLabel(def.cost)}</span>
-      <span className="card-effects">{def.effects.map(effectLabel).join('  ')}</span>
+      <span className="card-cost">
+        <CostView cost={def.cost} />
+      </span>
+      <span className="card-effects">
+        <EffectsView effects={def.effects} />
+      </span>
       <span className={`card-status${plan ? (plan.free ? ' ok' : '') : ' no'}`}>{status}</span>
     </button>
     <button type="button" className="card-info" aria-label={t('about', { name: def.name })} onClick={props.onInfo}>

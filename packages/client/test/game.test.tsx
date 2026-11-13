@@ -26,7 +26,7 @@ describe('Game screen', () => {
     inGame(gameMsg(s, 0));
     expect(screen.getByText('Term I')).toBeTruthy();
     expect(screen.getByText('Turn 1/6')).toBeTruthy();
-    expect(screen.getByLabelText('Coins').textContent).toContain('3');
+    expect(document.querySelector('.game-head .coins')!.textContent).toContain('3');
   });
 
   it('renders one card per hand card', () => {
@@ -98,20 +98,23 @@ describe('Game screen', () => {
 
   it('shows the next tower level cost in my area', () => {
     inGame(gameMsg(s, 0));
-    expect(screen.getByText('Next level: ⛏️⛏️')).toBeTruthy();
+    const row = screen.getByText('Next level:').closest('.glyphs') as HTMLElement;
+    expect(within(row).getAllByRole('img', { name: 'Ore' })).toHaveLength(2);
   });
 
   it('my panel lists all three tower levels with cost and reward', () => {
     inGame(gameMsg(s, 0));
-    fireEvent.click(screen.getByRole('button', { name: /Next level/ }));
+    fireEvent.click(screen.getByText('Next level:'));
     const dialog = screen.getByRole('dialog');
     expect(within(dialog).getByText('Level 1')).toBeTruthy();
     expect(within(dialog).getByText('Level 2')).toBeTruthy();
     expect(within(dialog).getByText('Level 3')).toBeTruthy();
-    expect(within(dialog).getByText('⛏️⛏️')).toBeTruthy();
-    expect(within(dialog).getByText('🌿🌿 ✨')).toBeTruthy();
-    expect(within(dialog).getByText('+3 ★')).toBeTruthy();
-    expect(within(dialog).getByText('+7 ★')).toBeTruthy();
+    const levels = dialog.querySelectorAll('.levels li');
+    expect(within(levels[0] as HTMLElement).getAllByRole('img', { name: 'Ore' })).toHaveLength(2);
+    expect(within(levels[1] as HTMLElement).getAllByRole('img', { name: 'Herbs' })).toHaveLength(2);
+    expect(within(levels[1] as HTMLElement).getAllByRole('img', { name: 'Essence' })).toHaveLength(1);
+    expect(levels[0].textContent).toContain('+3');
+    expect(levels[2].textContent).toContain('+7');
     expect(within(dialog).getByText('Each duel you win gives +1 extra Renown.')).toBeTruthy();
   });
 

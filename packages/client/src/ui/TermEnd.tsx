@@ -2,7 +2,7 @@ import type { PlayerView } from '@arcane/engine';
 import type { SeatStatus } from '@arcane/protocol';
 import { duelPowerOf, neighbors } from '../game/derive';
 import { usePrefs, useT } from './context';
-import { DUEL } from './icons';
+import { Icon } from './Icon';
 
 export const ROMAN = ['I', 'II', 'III'];
 
@@ -25,12 +25,18 @@ export function TermEnd(props: { term: number; view: PlayerView; deltas: number[
     <div className="sheet-backdrop">
       <section className={`sheet${prefs.animations ? ' pop' : ''}`} role="dialog" aria-label={t('duelsTitle', { n: ROMAN[props.term - 1] })}>
         <h3>{t('duelsTitle', { n: ROMAN[props.term - 1] })}</h3>
-        <p className="muted small">{`${t('duelPower')}: ${DUEL} ${mine}`}</p>
+        <p className="muted small num">
+          {t('duelPower')}: <Icon name="duel" />
+          {mine}
+        </p>
         <ul className="duels">
           {rows.map((r) => (
             <li key={r.seat}>
               <span>{t('vs', { name: name(r.seat) })}</span>
-              <span className="muted small">{`${DUEL} ${r.theirs}`}</span>
+              <span className="muted small num">
+                <Icon name="duel" />
+                {r.theirs}
+              </span>
               <span className={r.outcome}>
                 {r.outcome === 'tie' ? t('tie') : `${t(r.outcome as 'win' | 'loss')} ${r.amount > 0 ? '+' : ''}${r.amount}`}
               </span>

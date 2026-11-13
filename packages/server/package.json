@@ -1,0 +1,16 @@
+{
+  "name": "@arcane/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "dependencies": {
+    "@arcane/engine": "0.1.0",
+    "@arcane/protocol": "0.1.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/ws": "^8.5.12"
+  }
+}

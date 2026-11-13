@@ -5,9 +5,10 @@
     "packages/*"
   ],
   "scripts": {
-    "test": "vitest run --root packages/engine",
-    "typecheck": "tsc -p packages/engine --noEmit",
-    "sim": "tsx packages/sim/src/cli.ts"
+    "test": "vitest run --root packages/engine && vitest run --root packages/protocol && vitest run --root packages/server",
+    "typecheck": "tsc -p packages/engine --noEmit && tsc -p packages/protocol --noEmit && tsc -p packages/server --noEmit",
+    "sim": "tsx packages/sim/src/cli.ts",
+    "server": "tsx packages/server/src/main.ts"
   },
   "devDependencies": {
     "tsx": "^4.23.15",

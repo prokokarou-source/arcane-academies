@@ -1,0 +1,10 @@
+{
+  "name": "Arcane Academies",
+  "short_name": "Academies",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f6f3fb",
+  "theme_color": "#6b3fd4",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

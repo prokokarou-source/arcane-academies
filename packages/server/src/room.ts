@@ -58,6 +58,8 @@ interface Member {
   graceTimer?: unknown;
   /** A human seat currently played by a bot because its player is away. */
   botControlled: boolean;
+  /** Left the game on purpose (not just disconnected); a bot keeps playing the seat. */
+  left?: boolean;
   engineSeat: number;
 }
 
@@ -131,6 +133,7 @@ export class Room {
     }
     this.clearGrace(m);
     m.botControlled = false;
+    m.left = false;
     this.bind(m, conn);
     conn.send({ t: 'joined', code: this.code, seatId: m.id, token: m.token! });
     this.broadcast();
@@ -266,6 +269,11 @@ export class Room {
     m.conn = null;
     if (notify) conn.close('left');
     m.botControlled = true;
+    m.left = true;
+    // With no real player left, nobody is watching: end the room instead of letting bots play on.
+    const stay = this.members.filter((x) => x.kind === 'human' && !x.left);
+    if (stay.length === 0) return this.close('left');
+    if (this.hostId === m.id) this.hostId = (stay.find((x) => x.conn) ?? stay[0]).id;
     this.advance();
   }
 

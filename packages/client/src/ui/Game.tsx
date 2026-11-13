@@ -13,7 +13,7 @@ import { GameEnd } from './GameEnd';
 import { PlayerPanel } from './PlayerPanel';
 import { ROMAN, TermEnd } from './TermEnd';
 
-export function Game() {
+export function Game({ onSettings }: { onSettings(): void }) {
   const client = useClient();
   const t = useT();
   const sound = useSound();
@@ -22,6 +22,7 @@ export function Game() {
   const [inspect, setInspect] = useState<number | null>(null);
   const [table, setTable] = useState(false);
   const [info, setInfo] = useState<string | null>(null);
+  const [menu, setMenu] = useState<'closed' | 'open' | 'leave'>('closed');
   const turnKey = game ? `${game.view.term}/${game.view.turn}/${game.view.phase}` : '';
   useEffect(() => setSelected(null), [turnKey]);
   if (!game) return null;
@@ -57,6 +58,9 @@ export function Game() {
           {me.coins}
           <Icon name="coin" />
         </span>
+        <button className="link small" aria-label={t('menu')} onClick={() => setMenu('open')}>
+          ☰
+        </button>
       </header>
 
       <section className="neighbors">
@@ -148,6 +152,29 @@ export function Game() {
               <Neighbor key={p.seat} side={p.seat === view.me ? t('you') : ''} player={p} status={seats[p.seat]} onClick={() => (setTable(false), setInspect(p.seat))} />
             ))}
             <button onClick={() => setTable(false)}>{t('close')}</button>
+          </section>
+        </div>
+      )}
+      {menu !== 'closed' && (
+        <div className="sheet-backdrop" onClick={() => setMenu('closed')}>
+          <section className="sheet" role="dialog" aria-label={t('menu')} onClick={(e) => e.stopPropagation()}>
+            {menu === 'open' ? (
+              <>
+                <button onClick={onSettings}>{t('settings')}</button>
+                <button onClick={() => setMenu('leave')}>{t('leaveGame')}</button>
+                <button className="link" onClick={() => setMenu('closed')}>
+                  {t('close')}
+                </button>
+              </>
+            ) : (
+              <>
+                <p>{seats.some((s) => s.seat !== view.me && s.kind === 'human' && !s.botControlled) ? t('leaveBot') : t('leaveEnd')}</p>
+                <button className="primary" onClick={() => client.leave()}>
+                  {t('leave')}
+                </button>
+                <button onClick={() => setMenu('closed')}>{t('stay')}</button>
+              </>
+            )}
           </section>
         </div>
       )}

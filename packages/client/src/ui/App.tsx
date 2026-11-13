@@ -18,7 +18,8 @@ export function App({ initialRoom }: { initialRoom?: string }) {
   const update = useUpdate();
 
   let screen;
-  if (state.game) screen = <Game />;
+  if (page === 'settings') screen = <Settings onBack={() => setPage('home')} />;
+  else if (state.game) screen = <Game onSettings={() => setPage('settings')} />;
   else if (state.lobby) screen = <Lobby />;
   else if (state.restoring)
     screen = (
@@ -27,7 +28,6 @@ export function App({ initialRoom }: { initialRoom?: string }) {
       </main>
     );
   else if (page === 'rules') screen = <Rules onBack={() => setPage('home')} />;
-  else if (page === 'settings') screen = <Settings onBack={() => setPage('home')} />;
   else screen = <Home initialRoom={initialRoom} onRules={() => setPage('rules')} onSettings={() => setPage('settings')} />;
 
   return (

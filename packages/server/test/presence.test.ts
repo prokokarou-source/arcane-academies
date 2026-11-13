@@ -109,6 +109,26 @@ describe('bot takeover', () => {
     playToEnd(room, [a, b2]);
     expect(a.last('game')!.result).toBeDefined();
   });
+
+  it('ends the game when the last real player leaves and only bots remain', () => {
+    const { room, conns } = started();
+    const [a, b] = conns;
+    room.handle(a, { t: 'leave' });
+    expect(room.closed).toBe(false);
+    expect(b.last('game')!.seats[0].botControlled).toBe(true);
+    room.handle(b, { t: 'leave' });
+    expect(room.closed).toBe(true);
+  });
+
+  it('a solo game against bots ends when the player leaves', () => {
+    const { room, conns } = lobbyWith(['Ana']);
+    const [a] = conns;
+    room.handle(a, { t: 'addBot', level: 'easy' });
+    room.handle(a, { t: 'start' });
+    room.handle(a, { t: 'leave' });
+    expect(a.closedWith).toBe('left');
+    expect(room.closed).toBe(true);
+  });
 });
 
 describe('turn timer', () => {

@@ -54,6 +54,11 @@ export const en = {
   minutes: '{n} min',
   start: 'Start game',
   leave: 'Leave',
+  menu: 'Menu',
+  leaveGame: 'Leave game',
+  leaveBot: 'A bot will play your seat so the others can finish.',
+  leaveEnd: 'Only bots are left, so the game will end.',
+  stay: 'Stay',
   waitingHost: 'Waiting for the host to start…',
   seatsNeeded: 'A game needs 2 to 7 seats.',
   // game

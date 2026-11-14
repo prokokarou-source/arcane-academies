@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { planPayment, tradePrice, leftOf, rightOf } from '../src/payment';
+import { planPayment, tradePrice, leftOf, rightOf, validatePayment } from '../src/payment';
 import { fixedGame, withBuilt, withCoins } from './helpers';
 
 // seat0 home ore; left of 0 = seat2 (herbs home), right of 0 = seat1 (moonstone home)
@@ -36,11 +36,14 @@ describe('payment', () => {
     expect(planPayment(s, 0, { resources: { herbs: 1 } })!.coinsToLeft).toBe(1);
   });
 
-  it('cannot buy from neighbor trade card production', () => {
+  it('can buy from neighbor trade card production', () => {
     // seat2 owns Grand Exchange (any basic via trade card); ink not produced by anyone else
     const s = withBuilt(fixedGame(), 2, ['t2-grand-exchange']);
-    expect(planPayment(s, 0, { resources: { ink: 1 } })).toBeNull();
-    // but seat2 itself may use it
+    const plan = planPayment(s, 0, { resources: { ink: 1 } });
+    expect(plan).not.toBeNull();
+    expect(plan!.buyLeft.ink).toBe(1);
+    expect(validatePayment(s, 0, { resources: { ink: 1 } }, undefined, plan!)).toBe(true);
+    // and seat2 itself may use it too
     expect(planPayment(s, 2, { resources: { ink: 1 } })).not.toBeNull();
   });
 

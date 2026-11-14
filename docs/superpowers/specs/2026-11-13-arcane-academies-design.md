@@ -66,7 +66,7 @@ You can't build two copies of the same card.
 - **Rare (3):** Essence, Starglass, Dragonscale.
 - Each academy produces 1 of its **home resource** at the start. Each of the 7 academies has a different home resource.
 - Resources aren't spent. Production is a per-turn capacity: what you produce is available to you on every turn. A card that shows "A / B" produces one of the two each turn, your choice.
-- **Trading:** you may buy a resource from a neighbor (left or right player) for 2 coins per unit. The coins go to that neighbor, who can't refuse and doesn't lose anything. You can only buy what comes from their Basic and Rare resource cards and their academy's home resource, not from Trade cards or tower stages. Trade cards lower the price to 1 coin for some resources or one side.
+- **Trading:** you may buy a resource from a neighbor (left or right player) for 2 coins per unit. The coins go to that neighbor, who can't refuse and doesn't lose anything. You can buy what comes from any of their cards (Trade cards included) and their academy's home resource, but not from tower stages. Trade cards lower the price to 1 coin for some resources or one side.
 - Coins: everyone starts with 3.
 
 ### 5.4 Card families (each family has a color)

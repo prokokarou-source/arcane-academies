@@ -17,17 +17,13 @@ export function effectsOf(s: GameState, seat: number): Effect[] {
 }
 
 /**
- * Production of a seat. forTrade=true: only what neighbors may buy (home resource + basic/rare cards).
- * forTrade=false: everything the seat itself can use (adds trade cards and tower stages).
+ * Production of a seat. forTrade=true: what neighbors may buy (home resource + every built card).
+ * forTrade=false: everything the seat itself can use (adds tower stages).
  */
 export function productionOf(s: GameState, seat: number, forTrade: boolean): Produce[] {
   const p = s.players[seat];
   const home: Produce = { kind: 'produce', options: [academyDef(p.academyId).home], amount: 1 };
-  const cards = p.built.flatMap((c) => {
-    const d = cardDef(c.defId);
-    if (forTrade && d.family !== 'basic' && d.family !== 'rare') return [];
-    return d.effects.filter((e): e is Produce => e.kind === 'produce');
-  });
+  const cards = p.built.flatMap((c) => cardDef(c.defId).effects.filter((e): e is Produce => e.kind === 'produce'));
   const stages = forTrade
     ? []
     : academyDef(p.academyId).sides[p.side].slice(0, p.towerStages).flatMap((st) => st.effects.filter((e): e is Produce => e.kind === 'produce'));

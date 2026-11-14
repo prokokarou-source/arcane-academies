@@ -45,7 +45,7 @@ const pwa = VitePWA({
     ],
   },
   workbox: {
-    globPatterns: ['**/*.{js,css,html,svg,png,webmanifest,mp3}'],
+    globPatterns: ['**/*.{js,css,html,svg,png,webp,webmanifest,mp3}'],
     navigateFallback: '/index.html',
     // The health check and anything that is not the app must always reach the server.
     navigateFallbackDenylist: [/^\/health/],

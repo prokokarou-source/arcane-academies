@@ -116,6 +116,18 @@ select option { background: var(--night-2); color: var(--text); }
 .neighbor-top { display: flex; align-items: center; gap: 6px; width: 100%; }
 .ready { margin-left: auto; color: var(--ok); font-weight: 700; }
 .me { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; text-align: left; border-radius: 16px; border-color: rgba(232, 181, 74, 0.4); }
+/* The player's own academy art behind the strip, darkened on the left so the stats stay readable. */
+.me.has-art {
+  background:
+    linear-gradient(90deg, rgba(23, 17, 46, 0.94) 0%, rgba(23, 17, 46, 0.82) 55%, rgba(23, 17, 46, 0.35) 100%),
+    var(--art) center 40% / cover no-repeat,
+    #17112e;
+}
+.academy-art { display: block; width: 100%; aspect-ratio: 4 / 3; max-height: 34vh; object-fit: cover; border-radius: 12px; margin-bottom: 10px; }
+@media (min-width: 900px) {
+  .me.has-art { min-height: 150px; justify-content: flex-end; }
+  .academy-art { max-height: 46vh; }
+}
 .me-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .res { background: var(--vellum); border-radius: 8px; padding: 2px 6px; color: var(--ink); display: inline-flex; }
 .status { margin: 2px 0 0; text-align: center; color: var(--muted); min-height: 1.4em; font-family: var(--serif); font-style: italic; }

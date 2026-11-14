@@ -64,6 +64,11 @@ const CRESTS: Record<string, { color: string; body: JSX.Element }> = {
   runeforge: { color: '#c2453c', body: <path d="M6 22h20l-3 5H9z M10 22V12l6-6 6 6v10 M16 9v10 M13 13l3 3 3-3" /> },
 };
 
+/** Painted art of an academy (in public/academies/), used where there is room for it. */
+export function academyArt(academyId: string): string {
+  return `/academies/${CRESTS[academyId] ? academyId : 'astral'}.webp`;
+}
+
 export function Crest({ academyId, size = 40 }: { academyId: string; size?: number }) {
   const c = CRESTS[academyId] ?? CRESTS.astral;
   return (

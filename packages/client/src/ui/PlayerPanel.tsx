@@ -3,7 +3,7 @@ import type { SeatStatus } from '@arcane/protocol';
 import { duelPowerOf, productionOf, researchOf, towerOf, towerStagesOf } from '../game/derive';
 import { useT } from './context';
 import { CostView, EffectsView, EffectView, ResearchView } from './Glyphs';
-import { Crest } from './Icon';
+import { academyArt, Crest } from './Icon';
 import { FAMILY_COLOR } from './icons';
 
 const ORDER: Family[] = ['basic', 'rare', 'lore', 'trade', 'duel', 'research', 'patron'];
@@ -19,6 +19,7 @@ export function PlayerPanel(props: { player: PublicPlayer; status?: SeatStatus; 
   return (
     <div className="sheet-backdrop" onClick={props.onClose}>
       <section className="sheet" role="dialog" aria-label={name} onClick={(e) => e.stopPropagation()}>
+        <img className="academy-art" src={academyArt(p.academyId)} alt="" />
         <header className="sheet-head">
           <Crest academyId={p.academyId} size={44} />
           <h3>{name}</h3>

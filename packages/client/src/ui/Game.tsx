@@ -7,7 +7,7 @@ import { CardView } from './CardView';
 import { useClient, useClientState, useT } from './context';
 import { Deadline } from './Deadline';
 import { CostView, EffectView, ResearchView } from './Glyphs';
-import { Crest, Icon } from './Icon';
+import { academyArt, Crest, Icon } from './Icon';
 import { useSound } from '../audio/context';
 import { GameEnd } from './GameEnd';
 import { PlayerPanel } from './PlayerPanel';
@@ -71,7 +71,7 @@ export function Game({ onSettings }: { onSettings(): void }) {
         <Neighbor side={t('right')} player={view.players[right]} status={seats[right]} onClick={() => setInspect(right)} />
       </section>
 
-      <button className="me" onClick={() => setInspect(view.me)}>
+      <button className="me has-art" style={{ ['--art' as string]: `url(${academyArt(me.academyId)})` }} onClick={() => setInspect(view.me)}>
         <span className="me-row">
           <Crest academyId={me.academyId} size={30} />
           {productionOf(me).map((x, i) => (

@@ -129,7 +129,7 @@ export function Rules({ onBack }: { onBack(): void }) {
           </li>
           <li>Buying takes nothing away from them. They can still use it themselves.</li>
           <li>
-            You can buy their <strong>home resource</strong> and anything their cards produce, Trade cards included. Resources from tower levels are for their owner only.
+            You can buy their <strong>home resource</strong> and anything their cards produce, Trade cards included.
           </li>
           <li>Some Trade cards lower the price to 1 coin.</li>
           <li>The game works out the cheapest way to pay. You can change the trades before you confirm.</li>

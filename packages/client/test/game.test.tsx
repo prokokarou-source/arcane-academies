@@ -99,7 +99,7 @@ describe('Game screen', () => {
   it('shows the next tower level cost in my area', () => {
     inGame(gameMsg(s, 0));
     const row = screen.getByText('Next level:').closest('.glyphs') as HTMLElement;
-    expect(within(row).getAllByRole('img', { name: 'Ore' })).toHaveLength(2);
+    expect(within(row).getAllByRole('img', { name: 'Moonstone' })).toHaveLength(2);
   });
 
   it('my panel lists all three tower levels with cost and reward', () => {
@@ -110,7 +110,7 @@ describe('Game screen', () => {
     expect(within(dialog).getByText('Level 2')).toBeTruthy();
     expect(within(dialog).getByText('Level 3')).toBeTruthy();
     const levels = dialog.querySelectorAll('.levels li');
-    expect(within(levels[0] as HTMLElement).getAllByRole('img', { name: 'Ore' })).toHaveLength(2);
+    expect(within(levels[0] as HTMLElement).getAllByRole('img', { name: 'Moonstone' })).toHaveLength(2);
     expect(within(levels[1] as HTMLElement).getAllByRole('img', { name: 'Herbs' })).toHaveLength(2);
     expect(within(levels[1] as HTMLElement).getAllByRole('img', { name: 'Essence' })).toHaveLength(1);
     expect(levels[0].textContent).toContain('+3');
@@ -136,9 +136,9 @@ describe('Game screen', () => {
     let found: { g: GameMsg; uid: string } | null = null;
     for (let seed = 1; seed < 200 && !found; seed++) {
       let st = makeGame(['Ana', 'Bob', 'Cleo'], seed);
-      // Seat 0 (Pyromancy, tower level 1 = 2 Ore) owns one extra Ore card and has no coins.
-      const oreCard = CARDS.find((c) => c.family === 'basic' && c.effects.some((e) => e.kind === 'produce' && e.options.length === 1 && e.options[0] === 'ore'))!;
-      st = { ...st, players: st.players.map((p, i) => (i === 0 ? { ...p, coins: 0, built: [{ uid: 'x-ore', defId: oreCard.id }] } : p)) };
+      // Seat 0 (Pyromancy, tower level 1 = 2 Moonstone) owns two Moonstone cards and has no coins.
+      const moonCard = CARDS.find((c) => c.family === 'basic' && c.effects.some((e) => e.kind === 'produce' && e.options.length === 1 && e.options[0] === 'moonstone'))!;
+      st = { ...st, players: st.players.map((p, i) => (i === 0 ? { ...p, coins: 0, built: [{ uid: 'x-m1', defId: moonCard.id }, { uid: 'x-m2', defId: moonCard.id }] } : p)) };
       for (const seat of [0]) {
         const g = gameMsg(st, seat);
         const opt = handOptions(g.view, g.legal).find((o) => !o.build && o.tower);

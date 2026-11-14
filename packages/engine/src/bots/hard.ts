@@ -86,8 +86,8 @@ const units = (list: ReturnType<typeof productionOf>, r: Resource) =>
 function produceValue(s: GameState, seat: number, e: Extract<Effect, { kind: 'produce' }>): number {
   const later = turnsAfter(s);
   if (later === 0) return 0;
-  const own = productionOf(s, seat, false);
-  const nb = neighbors(s, seat).flatMap((n) => productionOf(s, n, true));
+  const own = productionOf(s, seat);
+  const nb = neighbors(s, seat).flatMap((n) => productionOf(s, n));
   const need = stageNeeds(s, seat);
   let best = 0;
   for (const r of e.options) {

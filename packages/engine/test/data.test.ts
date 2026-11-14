@@ -110,4 +110,9 @@ describe('academies', () => {
       expect(a.sides.B.some((s) => s.power === powers[a.id])).toBe(true);
     }
   });
+
+  it('no first tower level costs the academy home resource', () => {
+    for (const a of ACADEMIES)
+      for (const side of [a.sides.A, a.sides.B]) expect(side[0].cost.resources?.[a.home], `${a.id}`).toBeUndefined();
+  });
 });

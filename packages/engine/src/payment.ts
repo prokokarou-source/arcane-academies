@@ -16,18 +16,9 @@ export function effectsOf(s: GameState, seat: number): Effect[] {
   return [...fromCards, ...stages.flatMap((st) => st.effects)];
 }
 
-/**
- * Production of a seat. forTrade=true: what neighbors may buy (home resource + every built card).
- * forTrade=false: everything the seat itself can use (adds tower stages).
- */
-export function productionOf(s: GameState, seat: number, forTrade: boolean): Produce[] {
-  const p = s.players[seat];
-  const home: Produce = { kind: 'produce', options: [academyDef(p.academyId).home], amount: 1 };
-  const cards = p.built.flatMap((c) => cardDef(c.defId).effects.filter((e): e is Produce => e.kind === 'produce'));
-  const stages = forTrade
-    ? []
-    : academyDef(p.academyId).sides[p.side].slice(0, p.towerStages).flatMap((st) => st.effects.filter((e): e is Produce => e.kind === 'produce'));
-  return [home, ...cards, ...stages];
+/** Production of a seat (home resource, built cards, built tower levels). Neighbors may buy all of it. */
+export function productionOf(s: GameState, seat: number): Produce[] {
+  return [{ kind: 'produce', options: [academyDef(s.players[seat].academyId).home], amount: 1 }, ...effectsOf(s, seat).filter((e): e is Produce => e.kind === 'produce')];
 }
 
 /** Price (1 or 2) the seat pays to buy one unit of a resource from the neighbor on the given side. */
@@ -60,9 +51,9 @@ export function planPayment(s: GameState, seat: number, cost: Cost, chainFrom?: 
   const toSlots = (list: Produce[], owner: Slot['owner']): Slot[] =>
     list.map((e) => ({ options: e.options, remaining: e.amount, ...(e.options.length === 1 ? { chosen: e.options[0] } : {}), owner }));
   const slots: Slot[] = [
-    ...toSlots(productionOf(s, seat, false), 'self'),
-    ...toSlots(productionOf(s, leftOf(s, seat), true), 'left'),
-    ...toSlots(productionOf(s, rightOf(s, seat), true), 'right'),
+    ...toSlots(productionOf(s, seat), 'self'),
+    ...toSlots(productionOf(s, leftOf(s, seat)), 'left'),
+    ...toSlots(productionOf(s, rightOf(s, seat)), 'right'),
   ];
   const price = { left: {} as Record<string, number>, right: {} as Record<string, number> };
   for (const r of new Set(units)) {
@@ -158,13 +149,13 @@ export function validatePayment(s: GameState, seat: number, cost: Cost, chainFro
     if (neighbor === seat && bought.length) return false;
     const price = bought.reduce((sum, r) => sum + tradePrice(s, seat, side, r), 0);
     if (price !== (side === 'left' ? plan.coinsToLeft : plan.coinsToRight)) return false;
-    if (!canCover(productionOf(s, neighbor, true), bought)) return false;
+    if (!canCover(productionOf(s, neighbor), bought)) return false;
     for (const r of bought) {
       need[r] = (need[r] ?? 0) - 1;
       if ((need[r] ?? 0) < 0) return false;
     }
   }
   const rest = expand(need);
-  if (!rest || !canCover(productionOf(s, seat, false), rest)) return false;
+  if (!rest || !canCover(productionOf(s, seat), rest)) return false;
   return plan.coinsToBank + plan.coinsToLeft + plan.coinsToRight <= p.coins;
 }

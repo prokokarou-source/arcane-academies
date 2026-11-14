@@ -43,7 +43,7 @@ describe('actions', () => {
   });
 
   it('tower stage increments, applies effects, card hidden', () => {
-    let s = withBuilt(fixedGame(), 0, ['t1-iron-seam']); // pyromancy stage 1 needs ore 2
+    let s = withBuilt(fixedGame(), 0, ['t1-moonwell-pit', 't1-moonwell-pit']); // pyromancy stage 1 needs moonstone 2
     const uid = s.players[0].hand[0].uid;
     s = submitAction(s, 0, legalActions(s, 0).find((a) => a.type === 'tower' && a.cardUid === uid)!);
     s = resolveTurn(sellAll(s, [0]));

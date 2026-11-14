@@ -8,7 +8,7 @@ export { legalActions, submitAction, allSubmitted, resolveTurn, actingSeats, sco
 export { resolveDuels, duelPower } from './duels';
 export { hasPower } from './powers';
 export { scoreResearch, finalScores, winners } from './scoring';
-export type { ScoreBreakdown } from './scoring';
+export type { ScoreBreakdown, ScoreCategory, ScoreItem } from './scoring';
 export { viewFor } from './view';
 export type { PlayerView, PublicPlayer } from './view';
 export { archmagePick } from './bots/archmage';

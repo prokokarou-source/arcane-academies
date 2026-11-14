@@ -248,6 +248,15 @@ select option { background: var(--night-2); color: var(--text); }
 .scores th:first-child, .scores td:first-child { text-align: left; max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .scores td:last-child { color: var(--gold); font-weight: 700; }
 .scores tr.mine { background: var(--gold-soft); }
+.score-who { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; min-height: 36px; padding: 0; border: none; background: none; color: inherit; font: inherit; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.score-who .caret { color: var(--muted); width: 0.9em; flex: none; }
+.scores tr.open td { border-bottom: none; }
+.scores tr.score-detail td { text-align: left; max-width: none; white-space: normal; color: inherit; font-weight: 400; padding: 0 4px 10px 18px; }
+.score-items { list-style: none; margin: 0; padding: 0; }
+.score-items li { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+.score-item-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.score-item-pts { min-width: 2.5em; text-align: right; color: var(--gold); font-weight: 700; }
+.score-item-pts.loss { color: var(--danger); }
 .winner { text-align: center; font-family: var(--title); font-size: 1.6rem; color: var(--gold); margin: 8px 0; }
 
 @media (prefers-reduced-motion: reduce) {

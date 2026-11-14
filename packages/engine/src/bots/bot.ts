@@ -5,6 +5,7 @@ import { academyDef } from '../data/academies';
 import { nextRandom } from '../rng';
 import { scoreResearch } from '../scoring';
 import { archmagePick } from './archmage';
+import { hardPick } from './hard';
 
 const paid = (a: Action) => ('payment' in a ? a.payment.coinsToBank + a.payment.coinsToLeft + a.payment.coinsToRight : 0);
 
@@ -36,7 +37,8 @@ export function cardValue(s: GameState, seat: number, defId: string): number {
   return v;
 }
 
-function actionValue(s: GameState, seat: number, a: Action, level: BotLevel): number {
+/** Normal bot: greedy immediate value, with a little denial and a nudge towards academy stages. */
+function actionValue(s: GameState, seat: number, a: Action): number {
   const p = s.players[seat];
   const card = [...p.hand, ...(s.kept[seat] ? [s.kept[seat]!] : [])].find((c) => c.uid === a.cardUid)!;
   const cost = paid(a) / 3;
@@ -45,14 +47,17 @@ function actionValue(s: GameState, seat: number, a: Action, level: BotLevel): nu
   if (a.type === 'tower') {
     const st = academyDef(p.academyId).sides[p.side][p.towerStages];
     const renown = st.effects.reduce((sum, e) => sum + (e.kind === 'renown' ? e.amount : 0), 0);
-    return renown + (st.power ? 4 : 0) - cost + (level === 'hard' ? 1 : 0);
+    return renown + (st.power ? 4 : 0) - cost + 1;
   }
   let v = cardValue(s, seat, card.defId) - cost;
-  if (level === 'hard') v += 0.4 * cardValue(s, seat, card.defId); // denial: strong cards are worth taking away
+  v += 0.4 * cardValue(s, seat, card.defId); // denial: strong cards are worth taking away
   return v;
 }
 
-/** Deterministic bot pick for a seat at the given level. */
+/**
+ * Deterministic bot pick for a seat at the given level.
+ * easy: weighted random; normal: greedy value with light denial; hard: see ./hard.ts.
+ */
 export function botPick(s: GameState, seat: number, level: BotLevel): Action {
   const acts = legalActions(s, seat);
   if (level === 'easy') {
@@ -66,10 +71,11 @@ export function botPick(s: GameState, seat: number, level: BotLevel): Action {
     }
     return acts[acts.length - 1];
   }
+  if (level === 'hard') return hardPick(s, seat);
   let best = acts[0];
   let bestV = -Infinity;
   for (const a of acts) {
-    const v = actionValue(s, seat, a, level);
+    const v = actionValue(s, seat, a);
     if (v > bestV) {
       bestV = v;
       best = a;

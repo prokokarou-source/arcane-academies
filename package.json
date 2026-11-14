@@ -8,6 +8,7 @@
     "test": "vitest run --root packages/engine && vitest run --root packages/protocol && vitest run --root packages/server && vitest run --root packages/client",
     "typecheck": "tsc -p packages/engine --noEmit && tsc -p packages/protocol --noEmit && tsc -p packages/server --noEmit && tsc -p packages/client --noEmit",
     "sim": "tsx packages/sim/src/cli.ts",
+    "arena": "tsx packages/sim/src/arena.ts",
     "server": "tsx packages/server/src/main.ts",
     "client": "vite packages/client",
     "build": "vite build packages/client",

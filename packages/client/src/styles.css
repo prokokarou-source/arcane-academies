@@ -143,14 +143,26 @@ select option { background: var(--night-2); color: var(--text); }
 .scope { font-size: 0.8em; opacity: 0.7; }
 .tag-mini { font-size: 0.7em; padding: 0 4px; border-radius: 4px; background: rgba(0, 0, 0, 0.08); }
 
-/* Family colors (spec 5.4) */
-.fam-basic { --fam: #d9cfb8; }
-.fam-rare { --fam: #3a3546; }
-.fam-lore { --fam: #d9a520; }
-.fam-trade { --fam: #1fb5ad; }
-.fam-duel { --fam: #ef7d22; }
-.fam-research { --fam: #c2187f; }
-.fam-patron { --fam: #a9b0bb; }
+/* Family colours (keep in sync with FAMILY_COLOR in ui/Family.tsx). Each family also has a glyph and a label. */
+.fam-basic { --fam: #b07a43; }
+.fam-rare { --fam: #dfe4ec; }
+.fam-lore { --fam: #5b9cf0; }
+.fam-trade { --fam: #f2c230; }
+.fam-duel { --fam: #e8503f; }
+.fam-research { --fam: #4fb865; }
+.fam-patron { --fam: #ae78ea; }
+.fam-icon { flex: none; vertical-align: middle; }
+.fam-badge {
+  display: inline-flex; align-items: center; gap: 4px; align-self: flex-start; padding: 1px 8px 1px 6px; border-radius: 999px;
+  background: var(--night); color: var(--fam); border: 1px solid var(--fam); font-family: var(--sans); font-size: 0.72rem;
+  font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; line-height: 1.5;
+}
+.fam-counts { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.fam-count {
+  display: inline-flex; align-items: center; gap: 2px; padding: 0 5px; border-radius: 999px; font-weight: 700; font-size: 0.85em;
+  font-variant-numeric: tabular-nums; color: var(--fam); background: rgba(8, 5, 20, 0.55); border: 1px solid color-mix(in srgb, var(--fam) 60%, transparent);
+}
+.swatch.fam-glyph { display: inline-flex; align-items: center; justify-content: center; width: 1.15em; height: 1.15em; border-radius: 50%; border: none; background: var(--night); color: var(--fam); }
 
 /* The hand: parchment cards with a family seal. Scrolls inside its own strip. */
 .hand { display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; margin: 0 -16px; padding: 12px 16px 16px; -webkit-overflow-scrolling: touch; }
@@ -204,7 +216,8 @@ select option { background: var(--night-2); color: var(--text); }
 .stats dd { margin: 0; }
 .stats .effects-row .glyphs, .levels .glyphs { background: var(--vellum); color: var(--ink); border-radius: 6px; padding: 1px 5px; }
 .chips { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
-.chip { border: 2px solid var(--fam); border-radius: 8px; padding: 2px 8px; font-size: 0.85rem; background: var(--vellum); color: var(--ink); font-family: var(--serif); }
+.chip { display: inline-flex; align-items: center; gap: 5px; border: 2px solid var(--fam); border-left-width: 8px; border-radius: 8px; padding: 2px 8px 2px 6px; font-size: 0.85rem; background: var(--night); color: var(--text); font-family: var(--serif); }
+.chip .fam-icon { color: var(--fam); }
 .levels { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .levels li { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border-radius: 12px; background: rgba(15, 10, 32, 0.5); border: 1px solid rgba(169, 160, 200, 0.2); }
 .levels li.done { border-color: rgba(134, 219, 160, 0.6); background: rgba(134, 219, 160, 0.1); }

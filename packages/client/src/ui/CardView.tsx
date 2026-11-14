@@ -1,6 +1,7 @@
 import { cardDef } from '@arcane/engine';
 import { bankCost, tradeCost, type CardOptions } from '../game/derive';
 import { useT } from './context';
+import { FamilyBadge } from './Family';
 import { CostView, EffectsView } from './Glyphs';
 
 export function CardView(props: { opt: CardOptions; selected: boolean; onSelect(): void; onInfo(): void }) {
@@ -24,6 +25,7 @@ export function CardView(props: { opt: CardOptions; selected: boolean; onSelect(
       aria-pressed={props.selected}
       onClick={props.onSelect}
     >
+      <FamilyBadge family={def.family} />
       <span className="card-name">{def.name}</span>
       <span className="card-cost">
         <CostView cost={def.cost} />

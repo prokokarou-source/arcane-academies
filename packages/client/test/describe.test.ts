@@ -9,7 +9,7 @@ const id = (name: string) => [...CARDS, ...PATRONS].find((c) => c.name === name)
 describe('describeCard', () => {
   it('explains a trade discount, a free cost and what it unlocks', () => {
     const d = describeCard(id('Eastwind Courier'), t);
-    expect(d.family).toBe('Trade (turquoise)');
+    expect(d.family).toBe('Trade (yellow)');
     expect(d.cost).toBe('Free to build.');
     expect(d.effects).toEqual(['Buy basic resources (Herbs, Ore, Ink, Moonstone) from your right neighbor for 1 coin each instead of 2.']);
     expect(d.unlocks).toBe('Later you can build for free: Grand Exchange.');

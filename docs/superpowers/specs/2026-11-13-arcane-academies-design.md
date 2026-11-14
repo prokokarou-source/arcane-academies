@@ -70,17 +70,17 @@ You can't build two copies of the same card.
 - Coins: everyone starts with 3.
 
 ### 5.4 Card families (each family has a color)
-Seven families with the same roles and the same per-Term logic as the genre standard, in our own colors (user's request):
+Each family also has its own glyph and short label on every card, so colour is never the only cue. Seven families with the same roles and the same per-Term logic as the genre standard, in our own colors (user's request):
 
 | Family | Color | Role | Terms |
 |---|---|---|---|
-| Basic resources | white | Produce basic resources (1 type, or "A / B"; doubles in Term II) | I, II |
-| Rare resources | black | Produce rare resources | I, II |
-| Lore | gold | Straight Renown | I, II, III |
-| Trade | turquoise | Coins, cheaper trading, flexible production; in Term III coins plus end-game Renown | I, II, III |
-| Dueling | orange | Duel power, which carries over between Terms | I, II, III |
-| Research | magenta | Symbols in three disciplines: Alchemy, Astronomy, Runes | I, II, III |
-| Patrons | silver | Term III only, drawn at random. End-game scoring based on your academy and your neighbors' | III |
+| Basic resources | brown | Produce basic resources (1 type, or "A / B"; doubles in Term II) | I, II |
+| Rare resources | silver-white | Produce rare resources | I, II |
+| Lore | blue | Straight Renown | I, II, III |
+| Trade | yellow | Coins, cheaper trading, flexible production; in Term III coins plus end-game Renown | I, II, III |
+| Dueling | red | Duel power, which carries over between Terms | I, II, III |
+| Research | green | Symbols in three disciplines: Alchemy, Astronomy, Runes | I, II, III |
+| Patrons | purple | Term III only, drawn at random. End-game scoring based on your academy and your neighbors' | III |
 
 ### 5.5 Duels
 At the end of each Term, compare your total duel power with each neighbor separately. Duel power carries over from Term to Term.

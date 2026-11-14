@@ -1,15 +1,5 @@
-/** Placeholder art for v1: family colors (spec 5.4) and simple text icons. All original. */
-import type { Cost, CountTarget, Discipline, Effect, Family, Resource } from '@arcane/engine';
-
-export const FAMILY_COLOR: Record<Family, string> = {
-  basic: '#f4f1ea',
-  rare: '#2b2b33',
-  lore: '#d9a520',
-  trade: '#1fb5ad',
-  duel: '#ef7d22',
-  research: '#c2187f',
-  patron: '#a9b0bb',
-};
+/** Simple text icons (family colours and glyphs live in Family.tsx). All original. */
+import type { Cost, CountTarget, Discipline, Effect, Resource } from '@arcane/engine';
 
 export const RESOURCE_ICON: Record<Resource, string> = {
   herbs: '🌿',
@@ -23,13 +13,13 @@ export const RESOURCE_ICON: Record<Resource, string> = {
 
 export const DISCIPLINE_ICON: Record<Discipline, string> = { alchemy: '⚗️', astronomy: '🔭', runes: '📜' };
 const TARGET_ICON: Record<CountTarget, string> = {
-  basic: '⬜',
-  rare: '⬛',
-  lore: '🟨',
-  trade: '🟦',
-  duel: '🟧',
-  research: '🟪',
-  patron: '◻️',
+  basic: '🟫',
+  rare: '⬜',
+  lore: '🟦',
+  trade: '🟨',
+  duel: '🟥',
+  research: '🟩',
+  patron: '🟪',
   towerStage: '🗼',
 };
 export const COIN = '🪙';
@@ -56,7 +46,7 @@ export function effectLabel(e: Effect): string {
     case 'coins':
       return `+${e.amount} ${COIN}`;
     case 'tradeDiscount':
-      return `1${COIN} ${e.group === 'basic' ? '⬜' : '⬛'} ${e.sides.map((s) => (s === 'left' ? '◀' : '▶')).join('')}`;
+      return `1${COIN} ${e.group === 'basic' ? '🟫' : '⬜'} ${e.sides.map((s) => (s === 'left' ? '◀' : '▶')).join('')}`;
     case 'coinsPer':
       return `${e.per}${COIN}/${TARGET_ICON[e.what]}`;
     case 'renownPer':

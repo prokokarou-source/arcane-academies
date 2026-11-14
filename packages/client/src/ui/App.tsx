@@ -19,7 +19,8 @@ export function App({ initialRoom }: { initialRoom?: string }) {
 
   let screen;
   if (page === 'settings') screen = <Settings onBack={() => setPage('home')} />;
-  else if (state.game) screen = <Game onSettings={() => setPage('settings')} />;
+  else if (page === 'rules' && (state.game || (!state.lobby && !state.restoring))) screen = <Rules onBack={() => setPage('home')} />;
+  else if (state.game) screen = <Game onSettings={() => setPage('settings')} onRules={() => setPage('rules')} />;
   else if (state.lobby) screen = <Lobby />;
   else if (state.restoring)
     screen = (
@@ -27,7 +28,6 @@ export function App({ initialRoom }: { initialRoom?: string }) {
         <p className="status">{t('connecting')}</p>
       </main>
     );
-  else if (page === 'rules') screen = <Rules onBack={() => setPage('home')} />;
   else screen = <Home initialRoom={initialRoom} onRules={() => setPage('rules')} onSettings={() => setPage('settings')} />;
 
   return (

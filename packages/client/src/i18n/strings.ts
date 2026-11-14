@@ -198,13 +198,6 @@ export const en = {
   sfx: 'Sound effects',
   haptics: 'Haptics',
   saved: 'Saved',
-  // rules
-  rulesText:
-    'Three Terms. Each Term you get 7 cards. Everyone picks one card at the same time, then passes the rest (left in Terms I and III, right in Term II).\n' +
-    'With your pick you can Build it (pay its cost; free if you own its prerequisite), use it to raise a Tower stage, or Sell it for 3 coins.\n' +
-    'Resources are not spent: what you produce is available every turn. Buy missing resources from your left or right neighbor for 2 coins each.\n' +
-    'At the end of each Term you duel both neighbors: more duel power wins 1/3/5 Renown, less loses 1.\n' +
-    'After Term III the most Renown wins. Ties go to the most coins.',
 } as const;
 
 export type StringKey = keyof typeof en;

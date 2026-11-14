@@ -80,7 +80,11 @@ describe('Home', () => {
   it('opens the rules', () => {
     renderApp();
     fireEvent.click(screen.getByRole('button', { name: 'Rules' }));
-    expect(screen.getByText(/Three Terms/)).toBeTruthy();
+    expect(screen.getByText('3. How a turn works')).toBeTruthy();
+    expect(screen.getByText(/Terms I and III pass to the/)).toBeTruthy();
+    expect(screen.getByText(/Pyromancy Academy/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    expect(screen.getByRole('button', { name: 'Create game' })).toBeTruthy();
   });
   it('shows Connecting while a stored game is being restored, then Home if it is gone', () => {
     const storage = memoryStorage();

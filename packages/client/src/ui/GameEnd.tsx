@@ -2,7 +2,7 @@ import { Fragment, useState } from 'react';
 import { cardDef, type ScoreBreakdown, type ScoreCategory, type ScoreItem } from '@arcane/engine';
 import type { GameResult, SeatStatus } from '@arcane/protocol';
 import { useClient, useClientState, useT, type T } from './context';
-import { FAMILY_COLOR } from './icons';
+import { FAMILY_COLOR } from './Family';
 
 const CATS = ['duels', 'coins', 'tower', 'lore', 'trade', 'research', 'patrons', 'total'] as const satisfies readonly (keyof ScoreBreakdown)[];
 const ITEM_ORDER: ScoreCategory[] = ['duels', 'coins', 'tower', 'lore', 'trade', 'patrons', 'research'];

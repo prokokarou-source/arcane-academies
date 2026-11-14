@@ -6,6 +6,7 @@ import { CardInfo } from './CardInfo';
 import { CardView } from './CardView';
 import { useClient, useClientState, useT } from './context';
 import { Deadline } from './Deadline';
+import { FamilyCounts } from './Family';
 import { CostView, EffectView, ResearchView } from './Glyphs';
 import { academyArt, Crest, Icon } from './Icon';
 import { useSound } from '../audio/context';
@@ -88,6 +89,7 @@ export function Game({ onSettings, onRules }: { onSettings(): void; onRules(): v
           <ResearchView counts={research} />
           <span>{`${t('tower')} ${t('stageOf', { built: tower.built, total: tower.total })}`}</span>
           <span>{`${t('built')} ${me.built.length}`}</span>
+          <FamilyCounts player={me} />
         </span>
         <span className="me-row small">
           {tower.next ? (
@@ -212,6 +214,7 @@ function Neighbor(props: { side: string; player: PublicPlayer; status?: SeatStat
         </span>
         <span className="num">▦{p.built.length}</span>
       </span>
+      <FamilyCounts player={p} />
       {tags && <span className="tag">{tags}</span>}
     </button>
   );

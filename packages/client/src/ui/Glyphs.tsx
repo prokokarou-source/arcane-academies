@@ -1,6 +1,7 @@
 /** Costs and effects drawn with icons. Text descriptions live in game/describe.ts. */
 import type { Cost, CountTarget, Effect, Resource } from '@arcane/engine';
 import { useT } from './context';
+import { FamilyIcon } from './Family';
 import { Icon } from './Icon';
 
 const Many = ({ name, n }: { name: Resource; n: number }) => (
@@ -30,8 +31,15 @@ export function CostView({ cost }: { cost: Cost }) {
   );
 }
 
-const Swatch = ({ what }: { what: CountTarget }) =>
-  what === 'towerStage' ? <span className="swatch tower">♜</span> : <span className={`swatch fam-${what}`} />;
+function Swatch({ what }: { what: CountTarget }) {
+  const t = useT();
+  if (what === 'towerStage') return <span className="swatch tower">♜</span>;
+  return (
+    <span className={`swatch fam-glyph fam-${what}`}>
+      <FamilyIcon family={what} size="0.8em" label={t(`fam_${what}`)} />
+    </span>
+  );
+}
 
 const Scope = ({ scope }: { scope: 'self' | 'neighbors' | 'selfAndNeighbors' }) =>
   scope === 'self' ? null : <span className="scope">{scope === 'neighbors' ? '◂ ▸' : '◂●▸'}</span>;

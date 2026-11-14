@@ -1,12 +1,10 @@
-import { academyDef, cardDef, type Family, type PublicPlayer } from '@arcane/engine';
+import { academyDef, cardDef, type PublicPlayer } from '@arcane/engine';
 import type { SeatStatus } from '@arcane/protocol';
 import { duelPowerOf, productionOf, researchOf, towerOf, towerStagesOf } from '../game/derive';
 import { useT } from './context';
 import { CostView, EffectsView, EffectView, ResearchView } from './Glyphs';
 import { academyArt, Crest } from './Icon';
-import { FAMILY_COLOR } from './icons';
-
-const ORDER: Family[] = ['basic', 'rare', 'lore', 'trade', 'duel', 'research', 'patron'];
+import { FAMILIES as ORDER, FamilyIcon } from './Family';
 
 /** A bottom sheet with one academy's public state. */
 export function PlayerPanel(props: { player: PublicPlayer; status?: SeatStatus; onClose(): void }) {
@@ -67,7 +65,8 @@ export function PlayerPanel(props: { player: PublicPlayer; status?: SeatStatus; 
             {built.map((c) => {
               const d = cardDef(c.defId);
               return (
-                <li key={c.uid} className={`chip fam-${d.family}`} style={{ borderColor: FAMILY_COLOR[d.family] }}>
+                <li key={c.uid} className={`chip fam-${d.family}`} data-family={d.family}>
+                  <FamilyIcon family={d.family} label={t(`fam_${d.family}`)} />
                   {d.name}
                 </li>
               );

@@ -1,5 +1,6 @@
 import { describeCard } from '../game/describe';
 import { useT } from './context';
+import { FamilyBadge } from './Family';
 import { CostView, EffectsView } from './Glyphs';
 import { cardDef } from '@arcane/engine';
 
@@ -12,6 +13,7 @@ export function CardInfo({ defId, onClose }: { defId: string; onClose(): void })
     <div className="sheet-backdrop" onClick={onClose}>
       <section className={`sheet card-info-sheet fam-${def.family}`} role="dialog" aria-label={d.name} onClick={(e) => e.stopPropagation()}>
         <header className="sheet-head">
+          <FamilyBadge family={def.family} />
           <h3>{d.name}</h3>
           <span className="muted small">{d.family}</span>
         </header>

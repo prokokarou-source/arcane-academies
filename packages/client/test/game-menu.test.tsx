@@ -27,6 +27,15 @@ describe('game menu', () => {
     expect(screen.getByText('Term I')).toBeTruthy();
   });
 
+  it('opens the Rules from the game and goes back to it', () => {
+    inGame(gameMsg(makeGame(['Ana', 'Bob', 'Cleo']), 0));
+    fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Rules' }));
+    expect(screen.getByText('10. Duels')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    expect(screen.getByText('Term I')).toBeTruthy();
+  });
+
   it('leaving with other players says a bot takes over, and sends leave on confirm', () => {
     const h = inGame(gameMsg(makeGame(['Ana', 'Bob', 'Cleo']), 0));
     fireEvent.click(screen.getByRole('button', { name: 'Menu' }));

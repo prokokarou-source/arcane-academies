@@ -176,6 +176,21 @@ select option { background: var(--night-2); color: var(--text); }
 .actions button { padding: 0 6px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
 .cost-chip { background: rgba(0, 0, 0, 0.15); border-radius: 999px; padding: 0 6px; }
 
+/* Rules */
+.rules { max-width: 640px; margin: 0 auto; width: 100%; box-sizing: border-box; line-height: 1.45; }
+.rules h2 { color: var(--gold); font-size: 1.8rem; }
+.rules-lead { margin: 0; font-family: var(--serif); font-size: 1.05rem; }
+.rules-sec { border-radius: 12px; background: rgba(15, 10, 32, 0.5); border: 1px solid rgba(169, 160, 200, 0.2); }
+.rules-sec[open] { border-color: var(--gold-soft); }
+.rules-sec > summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; padding: 0 14px; font-family: var(--title); font-size: 1.15rem; color: var(--gold); }
+.rules-body { padding: 0 14px 12px; }
+.rules-body p, .rules-body ul, .rules-body ol { margin: 6px 0; }
+.rules-body ul, .rules-body ol { padding-left: 1.2em; }
+.rules-body li { margin: 4px 0; }
+.rules-body h4 { color: var(--gold); margin-top: 10px; }
+.rules-ex { padding: 6px 10px; border-left: 3px solid var(--gold); background: var(--gold-soft); border-radius: 0 8px 8px 0; }
+.rules-fam { white-space: nowrap; }
+
 /* Sheets */
 .sheet-backdrop { position: fixed; inset: 0; z-index: 30; background: rgba(8, 5, 20, 0.6); display: flex; align-items: flex-end; justify-content: center; }
 .sheet {

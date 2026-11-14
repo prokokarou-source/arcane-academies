@@ -13,7 +13,7 @@ import { GameEnd } from './GameEnd';
 import { PlayerPanel } from './PlayerPanel';
 import { ROMAN, TermEnd } from './TermEnd';
 
-export function Game({ onSettings }: { onSettings(): void }) {
+export function Game({ onSettings, onRules }: { onSettings(): void; onRules(): void }) {
   const client = useClient();
   const t = useT();
   const sound = useSound();
@@ -160,6 +160,7 @@ export function Game({ onSettings }: { onSettings(): void }) {
           <section className="sheet" role="dialog" aria-label={t('menu')} onClick={(e) => e.stopPropagation()}>
             {menu === 'open' ? (
               <>
+                <button onClick={onRules}>{t('rules')}</button>
                 <button onClick={onSettings}>{t('settings')}</button>
                 <button onClick={() => setMenu('leave')}>{t('leaveGame')}</button>
                 <button className="link" onClick={() => setMenu('closed')}>

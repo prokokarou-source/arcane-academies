@@ -21,6 +21,7 @@ export const en = {
   dismiss: 'Dismiss',
   reconnecting: 'Reconnecting…',
   connecting: 'Connecting…',
+  waking: 'Waking the server… the first start can take up to a minute.',
   notice_replaced: 'Your seat was opened on another device.',
   notice_expired: 'The room closed after a long time without activity.',
   notice_left: 'You left the room.',

@@ -128,6 +128,14 @@ export class GameClient {
     this.set({ conn: 'stopped' });
   }
 
+  /** The server answered over HTTP (e.g. it just woke up): if a reconnect is waiting on backoff, try now. */
+  wakeUp(): void {
+    if (this.stopped || this.ws || this.timer === null) return;
+    this.deps.clearTimeout(this.timer);
+    this.backoff = MIN_BACKOFF;
+    this.connect();
+  }
+
   private connect(): void {
     this.timer = null;
     const ws = this.deps.createSocket(this.deps.url);

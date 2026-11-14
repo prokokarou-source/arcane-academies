@@ -1,7 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { GameClient, type SocketLike } from './net/client';
-import { defaultServerUrl } from './net/url';
+import { defaultServerUrl, healthUrl } from './net/url';
 import { SoundProvider } from './audio/context';
 import { createSoundBoard, htmlAudio } from './audio/sounds';
 import { PwaProvider, type Pwa } from './pwa/context';
@@ -20,6 +20,8 @@ const client = new GameClient({
   clearTimeout: (id) => window.clearTimeout(id as number),
 });
 client.start();
+// A free host sleeps when idle; an HTTP request wakes it right away, while the socket keeps retrying.
+fetch(healthUrl(url), { cache: 'no-store', mode: 'no-cors' }).then(() => client.wakeUp(), () => {});
 
 const room = new URLSearchParams(location.search).get('room') ?? undefined;
 if (room) history.replaceState(null, '', location.pathname);

@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { memoryStorage } from './fakeSocket';
 import { renderApp } from './render';
 
@@ -59,10 +59,23 @@ describe('Home', () => {
     expect(screen.queryByText('Your seat was opened on another device.')).toBeNull();
   });
 
-  it('shows the reconnecting bar', () => {
-    const h = renderApp();
-    act(() => h.sock().serverClose(1006));
-    expect(screen.getByText('Reconnecting…')).toBeTruthy();
+  it('says the server is waking when connecting takes a while, and hides it once open', () => {
+    vi.useFakeTimers();
+    try {
+      const h = renderApp();
+      act(() => h.sock().serverClose(1006));
+      expect(screen.queryByText(/Waking the server/)).toBeNull();
+      act(() => vi.advanceTimersByTime(1600));
+      expect(screen.getByText(/Waking the server/)).toBeTruthy();
+      expect(screen.queryByText('Reconnecting…')).toBeNull();
+      act(() => {
+        h.runTimers();
+        h.sock().open();
+      });
+      expect(screen.queryByText(/Waking the server/)).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('settings saves name and language and falls back to English', () => {

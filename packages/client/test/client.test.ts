@@ -74,6 +74,17 @@ describe('GameClient', () => {
     expect(h.sockets).toHaveLength(3);
   });
 
+  it('wakeUp skips the backoff wait and connects now', () => {
+    const h = harness();
+    h.client.start();
+    h.sock().serverClose(1006);
+    expect(h.sockets).toHaveLength(1);
+    h.client.wakeUp();
+    expect(h.sockets).toHaveLength(2);
+    h.client.wakeUp(); // already connecting: no extra socket
+    expect(h.sockets).toHaveLength(2);
+  });
+
   it('caps the backoff at 8 s', () => {
     const h = harness();
     h.client.start();

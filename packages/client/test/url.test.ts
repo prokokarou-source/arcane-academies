@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { defaultServerUrl, inviteLink } from '../src/net/url';
+import { defaultServerUrl, healthUrl, inviteLink } from '../src/net/url';
 
 describe('urls', () => {
   it('in development talks to the server on port 8787 next to the page', () => {
@@ -18,5 +18,12 @@ describe('urls', () => {
     expect(inviteLink('WAND-42', { origin: 'http://192.168.1.161:5173', hostname: '192.168.1.161' }, 'http://10.0.0.2:5173')).toBe(
       'http://192.168.1.161:5173/?room=WAND-42',
     );
+  });
+});
+
+describe('healthUrl', () => {
+  it('turns the socket address into the HTTP health check', () => {
+    expect(healthUrl('wss://arcane.example.com')).toBe('https://arcane.example.com/health');
+    expect(healthUrl('ws://192.168.1.5:8787')).toBe('http://192.168.1.5:8787/health');
   });
 });

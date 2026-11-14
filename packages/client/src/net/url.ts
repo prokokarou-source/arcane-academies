@@ -9,7 +9,15 @@ export function defaultServerUrl(loc: { protocol: string; hostname: string; host
   return dev ? `${scheme}://${loc.hostname}:8787` : `${scheme}://${loc.host}`;
 }
 
-const LOCAL = ['localhost', '127.0.0.1', '[::1]', '::1'];
+/** The server's HTTP health check, next to its WebSocket address. Hitting it wakes a sleeping host. */
+export function healthUrl(serverUrl: string): string {
+  const u = new URL(serverUrl);
+  u.protocol = u.protocol === 'wss:' ? 'https:' : 'http:';
+  u.pathname = '/health';
+  return u.toString();
+}
+
+const LOCAL =['localhost', '127.0.0.1', '[::1]', '::1'];
 
 /**
  * The link friends open to join a room. A page opened as localhost would hand out a link that only works

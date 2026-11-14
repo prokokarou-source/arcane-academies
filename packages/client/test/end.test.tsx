@@ -9,6 +9,7 @@ afterEach(cleanup);
 
 const s = makeGame(['Ana', 'Bob', 'Cleo']);
 const duelCard = CARDS.find((c) => c.family === 'duel' && c.term === 1)!;
+const loreCard = CARDS.find((c) => c.family === 'lore' && c.term === 1)!;
 const withDuels = (v: PlayerView, built: number[], tokens: number[][]): PlayerView => ({
   ...v,
   duelTokens: tokens,
@@ -62,7 +63,24 @@ describe('Term end', () => {
 
 describe('Game end', () => {
   const result: GameResult = {
-    scores: [0, 1, 2].map((seat) => ({ seat, duels: seat, coins: 1, tower: 3, lore: 4, trade: 0, research: 2, patrons: 0, total: 10 + seat })),
+    scores: [0, 1, 2].map((seat) => ({
+      seat,
+      duels: seat,
+      coins: 1,
+      tower: 3,
+      lore: 4,
+      trade: 0,
+      research: 2,
+      patrons: 0,
+      total: 10 + seat,
+      items: [
+        ...(seat ? [{ cat: 'duels' as const, kind: 'duels' as const, points: seat }] : []),
+        { cat: 'coins', kind: 'coins', n: 4, points: 1 },
+        { cat: 'tower', kind: 'stage', stage: 1, points: 3 },
+        { cat: 'lore', kind: 'card', defId: loreCard.id, points: 4 },
+        { cat: 'research', kind: 'research', points: 2 },
+      ],
+    })),
     winners: [2],
   };
   const ended = (seat: number): GameMsg => {
@@ -77,9 +95,26 @@ describe('Game end', () => {
     for (const c of ['Duels', 'Coins', 'Tower', 'Lore', 'Trade', 'Research', 'Patrons', 'Total']) {
       expect(screen.getByRole('columnheader', { name: c })).toBeTruthy();
     }
-    expect(screen.getAllByRole('row')).toHaveLength(4);
+    // 1 header + 3 players + my own breakdown, open by default
+    expect(screen.getAllByRole('row')).toHaveLength(5);
     expect(screen.queryByText('Waiting for the others…')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Sell +3' })).toBeNull();
+  });
+
+  it('shows my per-source breakdown and lets me open another player', () => {
+    play('s1', 's1', [ended(0)]);
+    const mine = screen.getByRole('button', { name: /Show where Ana/ });
+    expect(mine.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByText(loreCard.name)).toBeTruthy();
+    expect(screen.getByText('Tower stage 1')).toBeTruthy();
+    expect(screen.getByText('4 coins')).toBeTruthy();
+    expect(screen.queryByText('Duel tokens')).toBeNull(); // Ana has no duel points
+    fireEvent.click(screen.getByRole('button', { name: /Show where Cleo/ }));
+    expect(mine.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.getByText('Duel tokens')).toBeTruthy();
+    expect(screen.getByText('Duel tokens').closest('li')!.textContent).toContain('+2');
+    fireEvent.click(screen.getByRole('button', { name: /Show where Cleo/ }));
+    expect(screen.queryByText('Duel tokens')).toBeNull();
   });
 
   it('host sees rematch and sends it', () => {

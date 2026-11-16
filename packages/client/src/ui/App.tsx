@@ -7,11 +7,12 @@ import { Game } from './Game';
 import { Home } from './Home';
 import { Lobby } from './Lobby';
 import { Privacy } from './Privacy';
+import { Profile } from './Profile';
 import { QuickMatch } from './QuickMatch';
 import { Rules } from './Rules';
 import { Settings } from './Settings';
 
-type Page = 'home' | 'rules' | 'settings' | 'account' | 'friends' | 'privacy';
+type Page = 'home' | 'rules' | 'settings' | 'account' | 'friends' | 'privacy' | 'profile';
 
 /** The privacy notice has its own address (/privacy) so it can be linked from outside the app. */
 export const PRIVACY_PATH = '/privacy';
@@ -43,7 +44,10 @@ export function App({ initialRoom, initialPage }: { initialRoom?: string; initia
   else if (page === 'settings') screen = <Settings onBack={() => setPage('home')} />;
   else if (page === 'rules' && (state.game || (!state.lobby && !state.restoring))) screen = <Rules onBack={() => setPage('home')} />;
   else if (page === 'account' && !state.game && !state.lobby)
-    screen = <Account onBack={() => setPage('home')} onFriends={() => setPage('friends')} onPrivacy={() => setPage('privacy')} />;
+    screen = (
+      <Account onBack={() => setPage('home')} onFriends={() => setPage('friends')} onProfile={() => setPage('profile')} onPrivacy={() => setPage('privacy')} />
+    );
+  else if (page === 'profile' && !state.game && !state.lobby && state.account) screen = <Profile onBack={() => setPage('account')} />;
   else if (page === 'friends' && !state.game) screen = <Friends onBack={() => setPage('home')} onAccount={() => setPage('account')} />;
   else if (state.game) screen = <Game onSettings={() => setPage('settings')} onRules={() => setPage('rules')} />;
   else if (state.lobby) screen = <Lobby onFriends={state.account ? () => setPage('friends') : undefined} />;

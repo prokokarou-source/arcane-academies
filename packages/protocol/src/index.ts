@@ -80,6 +80,39 @@ export interface FriendList {
   outgoing: string[];
 }
 
+/** One finished game in my history. */
+export interface GameSummary {
+  /** Epoch ms. */
+  at: number;
+  academyId: string;
+  score: number;
+  /** 1 = first (shared on a tie). */
+  place: number;
+  won: boolean;
+  /** Seats in the game, bots included. */
+  players: number;
+}
+
+export interface Profile {
+  username: string;
+  games: number;
+  wins: number;
+  totalScore: number;
+  bestScore: number;
+  /** The last games, newest first. */
+  recent: GameSummary[];
+}
+
+/** One row of the friends leaderboard (me and my accepted friends), best first. */
+export interface LeaderRow {
+  username: string;
+  games: number;
+  wins: number;
+  me: boolean;
+}
+
+export const PROFILE_HISTORY = 10;
+
 /** Account and friend messages; handled apart from rooms and never tied to a seat. */
 export type SocialMessage =
   | { t: 'signup'; username: string; password: string }
@@ -92,7 +125,13 @@ export type SocialMessage =
   /** Decline a request, cancel my own, or unfriend. */
   | { t: 'friendRemove'; username: string }
   /** Invite an online friend to the room I am in. */
-  | { t: 'invite'; username: string };
+  | { t: 'invite'; username: string }
+  | { t: 'profile' }
+  | { t: 'leaderboard' }
+  | { t: 'changePassword'; current: string; next: string }
+  /** End every login of my account, this one included. */
+  | { t: 'logoutAll' }
+  | { t: 'deleteAccount'; password: string };
 
 export const SOCIAL_TYPES: readonly SocialMessage['t'][] = [
   'signup',
@@ -103,6 +142,11 @@ export const SOCIAL_TYPES: readonly SocialMessage['t'][] = [
   'friendAccept',
   'friendRemove',
   'invite',
+  'profile',
+  'leaderboard',
+  'changePassword',
+  'logoutAll',
+  'deleteAccount',
 ];
 
 export const isSocialMessage = (m: ClientMessage): m is SocialMessage => (SOCIAL_TYPES as readonly string[]).includes(m.t);
@@ -163,7 +207,8 @@ export type ErrorCode =
   | 'friend_offline'
   | 'busy'
   | 'invite_no_room'
-  | 'unavailable';
+  | 'unavailable'
+  | 'wrong_password';
 
 /** Errors that belong to the account and friend screens rather than the room. */
 export const SOCIAL_ERRORS: readonly ErrorCode[] = [
@@ -180,6 +225,7 @@ export const SOCIAL_ERRORS: readonly ErrorCode[] = [
   'busy',
   'invite_no_room',
   'unavailable',
+  'wrong_password',
 ];
 
 export type CloseReason = 'expired' | 'replaced' | 'left' | 'removed';
@@ -207,7 +253,10 @@ export type ServerMessage =
   /** I am in the quick-match queue: `searching` players are waiting in total (me included). */
   | { t: 'quickQueue'; size: QuickSize; searching: number; waitedMs: number }
   /** I left the queue without a match (cancelled). */
-  | { t: 'quickCancelled' };
+  | { t: 'quickCancelled' }
+  | { t: 'profile'; profile: Profile }
+  | { t: 'leaderboard'; rows: LeaderRow[] }
+  | { t: 'passwordChanged' };
 
 export function encode(msg: ClientMessage | ServerMessage): string {
   return JSON.stringify(msg);
@@ -291,7 +340,14 @@ function parseObj(m: Obj): ClientMessage | null {
     case 'auth':
       return isStr(m.token, 128) ? { t: 'auth', token: m.token } : null;
     case 'logout':
-      return { t: 'logout' };
+    case 'logoutAll':
+    case 'profile':
+    case 'leaderboard':
+      return { t: m.t };
+    case 'changePassword':
+      return isPass(m.current) && isPass(m.next) ? { t: 'changePassword', current: m.current, next: m.next } : null;
+    case 'deleteAccount':
+      return isPass(m.password) ? { t: 'deleteAccount', password: m.password } : null;
     case 'friendRequest':
     case 'friendAccept':
     case 'friendRemove':

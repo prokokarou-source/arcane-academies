@@ -1,6 +1,6 @@
 import pg from 'pg';
-import type { FriendLink, FriendRow, Store, StoredUser, User } from './store';
-import { usernameKey } from './store';
+import type { FriendLink, FriendRow, GameRecord, StatTotals, Store, StoredUser, User } from './store';
+import { NO_STATS, usernameKey } from './store';
 
 /** Run on every start; each statement is safe to repeat. */
 const MIGRATIONS = [
@@ -25,6 +25,17 @@ const MIGRATIONS = [
      primary key (requester, addressee)
    )`,
   `create index if not exists friendships_addressee on friendships(addressee)`,
+  `create table if not exists game_results (
+     id bigserial primary key,
+     user_id bigint not null references users(id) on delete cascade,
+     academy_id text not null,
+     score integer not null,
+     place integer not null,
+     won boolean not null,
+     players integer not null,
+     played_at timestamptz not null default now()
+   )`,
+  `create index if not exists game_results_user on game_results(user_id, played_at desc)`,
 ];
 
 const user = (r: { id: string | number; username: string }): User => ({ id: String(r.id), username: r.username });
@@ -125,5 +136,56 @@ export class PgStore implements Store {
       [userId],
     );
     return r.rows.map((row) => ({ other: user(row), accepted: row.accepted, outgoing: row.outgoing }));
+  }
+
+  async setPassword(userId: string, passHash: string): Promise<void> {
+    await this.q('update users set pass_hash = $2 where id = $1', [userId, passHash]);
+  }
+
+  async deleteSessions(userId: string, keepTokenHash?: string): Promise<void> {
+    await this.q('delete from sessions where user_id = $1 and token_hash is distinct from $2', [userId, keepTokenHash ?? null]);
+  }
+
+  async deleteUser(userId: string): Promise<void> {
+    // Sessions, friendships and results go with the user (on delete cascade).
+    await this.q('delete from users where id = $1', [userId]);
+  }
+
+  async recordResult(r: GameRecord): Promise<void> {
+    await this.q(
+      `insert into game_results (user_id, academy_id, score, place, won, players, played_at)
+       select $1, $2, $3, $4, $5, $6, to_timestamp($7 / 1000.0) where exists (select 1 from users where id = $1)`,
+      [r.userId, r.academyId, r.score, r.place, r.won, r.players, r.playedAt],
+    );
+  }
+
+  async totals(userIds: string[]): Promise<Map<string, StatTotals>> {
+    const out = new Map<string, StatTotals>(userIds.map((id) => [id, { ...NO_STATS }]));
+    if (!userIds.length) return out;
+    const r = await this.q(
+      `select user_id, count(*)::int as games, count(*) filter (where won)::int as wins,
+              coalesce(sum(score), 0)::int as total, coalesce(max(score), 0)::int as best
+       from game_results where user_id = any($1::bigint[]) group by user_id`,
+      [userIds],
+    );
+    for (const row of r.rows) out.set(String(row.user_id), { games: row.games, wins: row.wins, totalScore: row.total, bestScore: row.best });
+    return out;
+  }
+
+  async history(userId: string, limit: number): Promise<GameRecord[]> {
+    const r = await this.q(
+      `select academy_id, score, place, won, players, played_at from game_results
+       where user_id = $1 order by played_at desc, id desc limit $2`,
+      [userId, limit],
+    );
+    return r.rows.map((row) => ({
+      userId,
+      academyId: row.academy_id,
+      score: row.score,
+      place: row.place,
+      won: row.won,
+      players: row.players,
+      playedAt: new Date(row.played_at).getTime(),
+    }));
   }
 }

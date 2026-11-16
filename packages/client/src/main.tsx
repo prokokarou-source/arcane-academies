@@ -1,16 +1,22 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { GameClient, type SocketLike } from './net/client';
+import { beaconSend, createReporter, installErrorReporting, reportUrl } from './net/errors';
 import { defaultServerUrl, healthUrl } from './net/url';
 import { SoundProvider } from './audio/context';
 import { createSoundBoard, htmlAudio } from './audio/sounds';
 import { PwaProvider, type Pwa } from './pwa/context';
 import { createConnectivity, createInstall, createUpdate } from './pwa/install';
-import { App } from './ui/App';
+import { App, PRIVACY_PATH } from './ui/App';
+import { ErrorBoundary } from './ui/ErrorBoundary';
 import { ClientProvider } from './ui/context';
 import './styles.css';
 
 const url = (import.meta.env.VITE_SERVER_URL as string | undefined) ?? defaultServerUrl(location, import.meta.env.DEV);
+// Crash reports go to our own server; the page path only, never the query string.
+const reportError = createReporter({ url: reportUrl(url), version: __APP_VERSION__, page: () => location.pathname, send: beaconSend });
+installErrorReporting(window, reportError);
+
 const client = new GameClient({
   url,
   // The browser WebSocket has the SocketLike shape; its handler types are just stricter.
@@ -25,6 +31,8 @@ fetch(healthUrl(url), { cache: 'no-store', mode: 'no-cors' }).then(() => client.
 
 const room = new URLSearchParams(location.search).get('room') ?? undefined;
 if (room) history.replaceState(null, '', location.pathname);
+
+const initialPage = location.pathname.replace(/\/+$/, '') === PRIVACY_PATH ? 'privacy' : undefined;
 
 const pwa: Pwa = { install: createInstall(window, localStorage), update: createUpdate(), online: createConnectivity(window) };
 // The service worker only exists in the production build; a waiting update is offered as "Reload".
@@ -42,12 +50,14 @@ const sound = createSoundBoard({
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <PwaProvider pwa={pwa}>
-      <ClientProvider client={client} storage={localStorage}>
-        <SoundProvider board={sound}>
-          <App initialRoom={room} />
-        </SoundProvider>
-      </ClientProvider>
-    </PwaProvider>
+    <ErrorBoundary onError={reportError}>
+      <PwaProvider pwa={pwa}>
+        <ClientProvider client={client} storage={localStorage}>
+          <SoundProvider board={sound}>
+            <App initialRoom={room} initialPage={initialPage} />
+          </SoundProvider>
+        </ClientProvider>
+      </PwaProvider>
+    </ErrorBoundary>
   </StrictMode>,
 );

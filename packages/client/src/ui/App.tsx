@@ -6,16 +6,20 @@ import { Friends } from './Friends';
 import { Game } from './Game';
 import { Home } from './Home';
 import { Lobby } from './Lobby';
+import { Privacy } from './Privacy';
 import { Rules } from './Rules';
 import { Settings } from './Settings';
 
-type Page = 'home' | 'rules' | 'settings' | 'account' | 'friends';
+type Page = 'home' | 'rules' | 'settings' | 'account' | 'friends' | 'privacy';
 
-export function App({ initialRoom }: { initialRoom?: string }) {
+/** The privacy notice has its own address (/privacy) so it can be linked from outside the app. */
+export const PRIVACY_PATH = '/privacy';
+
+export function App({ initialRoom, initialPage }: { initialRoom?: string; initialPage?: 'privacy' }) {
   const state = useClientState();
   const client = useClient();
   const t = useT();
-  const [page, setPage] = useState<Page>('home');
+  const [page, setPage] = useState<Page>(initialPage ?? 'home');
   const online = useOnline();
   const update = useUpdate();
   const [prefs] = usePrefs();
@@ -28,11 +32,17 @@ export function App({ initialRoom }: { initialRoom?: string }) {
     return () => clearTimeout(id);
   }, [open]);
 
+  const leavePrivacy = () => {
+    if (location.pathname === PRIVACY_PATH) history.replaceState(null, '', '/');
+    setPage('home');
+  };
+
   let screen;
-  if (page === 'settings') screen = <Settings onBack={() => setPage('home')} />;
+  if (page === 'privacy' && !state.game && !state.lobby) screen = <Privacy onBack={leavePrivacy} />;
+  else if (page === 'settings') screen = <Settings onBack={() => setPage('home')} />;
   else if (page === 'rules' && (state.game || (!state.lobby && !state.restoring))) screen = <Rules onBack={() => setPage('home')} />;
   else if (page === 'account' && !state.game && !state.lobby)
-    screen = <Account onBack={() => setPage('home')} onFriends={() => setPage('friends')} />;
+    screen = <Account onBack={() => setPage('home')} onFriends={() => setPage('friends')} onPrivacy={() => setPage('privacy')} />;
   else if (page === 'friends' && !state.game) screen = <Friends onBack={() => setPage('home')} onAccount={() => setPage('account')} />;
   else if (state.game) screen = <Game onSettings={() => setPage('settings')} onRules={() => setPage('rules')} />;
   else if (state.lobby) screen = <Lobby onFriends={state.account ? () => setPage('friends') : undefined} />;
@@ -50,6 +60,7 @@ export function App({ initialRoom }: { initialRoom?: string }) {
         onSettings={() => setPage('settings')}
         onAccount={() => setPage('account')}
         onFriends={() => setPage('friends')}
+        onPrivacy={() => setPage('privacy')}
       />
     );
 

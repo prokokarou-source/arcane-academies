@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { encode, isSocialMessage, MAX_MESSAGE_BYTES, parseClientMessage, type CloseReason } from '@arcane/protocol';
+import { CLIENT_ERROR_PATH, clientErrorHandler, type ClientErrorOptions } from './clientErrors';
 import { realClock } from './clock';
 import { RoomManager, type ManagerOptions } from './manager';
 import type { Conn } from './room';
@@ -19,6 +20,8 @@ export interface ServerOptions {
   staticDir?: string;
   /** Accounts and friends; in memory when not given. Closed together with the server. */
   store?: Store;
+  /** Rate limit and log sink for client crash reports (tests override them). */
+  clientErrors?: ClientErrorOptions;
 }
 
 export interface RunningServer {
@@ -52,7 +55,12 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
   const store = opts.store ?? new MemoryStore();
   const social = new Social(store, { roomOf: (c) => manager.codeOf(c), clock: realClock });
   const serveStatic = opts.staticDir ? staticHandler(opts.staticDir) : null;
+  const reportClientError = clientErrorHandler(opts.clientErrors);
   const http = createServer((req, res) => {
+    if (req.method === 'POST' && req.url === CLIENT_ERROR_PATH) {
+      reportClientError(req, res);
+      return;
+    }
     if (req.method === 'GET' && req.url === '/health') {
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ ok: true, rooms: manager.size() }));

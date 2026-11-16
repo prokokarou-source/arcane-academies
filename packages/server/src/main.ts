@@ -1,7 +1,11 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { guardProcess } from './clientErrors';
 import { PgStore } from './pgStore';
 import { startServer } from './server';
+
+// One failing callback is logged, not allowed to take every room down with it.
+guardProcess();
 
 const num = (v: string | undefined, fallback: number) => (v && Number.isFinite(Number(v)) ? Number(v) : fallback);
 

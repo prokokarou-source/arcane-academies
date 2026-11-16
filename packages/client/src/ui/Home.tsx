@@ -8,7 +8,7 @@ import { Crest } from './Icon';
 
 export const LEVELS: BotLevel[] = ['easy', 'normal', 'hard'];
 
-export function Home(props: { initialRoom?: string; onRules(): void; onSettings(): void; onAccount(): void; onFriends(): void }) {
+export function Home(props: { initialRoom?: string; onRules(): void; onSettings(): void; onAccount(): void; onFriends(): void; onPrivacy(): void }) {
   const client = useClient();
   const { account, friends } = useClientState();
   const t = useT();
@@ -152,6 +152,9 @@ export function Home(props: { initialRoom?: string; onRules(): void; onSettings(
         </button>
         <button className="link" onClick={props.onSettings}>
           {t('settings')}
+        </button>
+        <button className="link" onClick={props.onPrivacy}>
+          {t('privacy')}
         </button>
       </nav>
     </main>

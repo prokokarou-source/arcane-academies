@@ -264,6 +264,10 @@ export const en = {
   sfx: 'Sound effects',
   haptics: 'Haptics',
   saved: 'Saved',
+  // privacy and crash screen
+  privacy: 'Privacy',
+  crashTitle: 'Something went wrong',
+  crashBody: 'The app hit an unexpected error. Reloading usually fixes it; your game is kept on the server.',
 } as const;
 
 export type StringKey = keyof typeof en;

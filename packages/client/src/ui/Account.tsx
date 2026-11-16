@@ -3,7 +3,7 @@ import { MAX_PASSWORD, MIN_PASSWORD, USERNAME_RE } from '@arcane/protocol';
 import { useClient, useClientState, useT } from './context';
 
 /** Log in or create an account (username + password). Optional: guests can always play. */
-export function Account(props: { onBack(): void; onFriends(): void }) {
+export function Account(props: { onBack(): void; onFriends(): void; onPrivacy?(): void }) {
   const client = useClient();
   const t = useT();
   const { account, accountPending, socialError } = useClientState();
@@ -71,6 +71,11 @@ export function Account(props: { onBack(): void; onFriends(): void }) {
           />
           {mode === 'signup' && <span className="small">{t('passwordHint')}</span>}
         </label>
+        {mode === 'signup' && props.onPrivacy && (
+          <button type="button" className="link small" onClick={props.onPrivacy}>
+            {t('privacy')}
+          </button>
+        )}
         {socialError && (
           <div className="banner banner-error" role="alert">
             <span>{t(`error_${socialError.code}`)}</span>

@@ -1,9 +1,11 @@
+import { readFileSync } from 'node:fs';
 import { networkInterfaces } from 'node:os';
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
 const PORT = 5173;
+const VERSION = (JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { version: string }).version;
 const VIRTUAL = /vethernet|virtualbox|vmware|hyper-v|docker|wsl|loopback|bluetooth/i;
 
 /**
@@ -48,7 +50,7 @@ const pwa = VitePWA({
     globPatterns: ['**/*.{js,css,html,svg,png,webp,webmanifest,mp3}'],
     navigateFallback: '/index.html',
     // The health check and anything that is not the app must always reach the server.
-    navigateFallbackDenylist: [/^\/health/],
+    navigateFallbackDenylist: [/^\/health/, /^\/api\//],
     cleanupOutdatedCaches: true,
     maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
     runtimeCaching: [
@@ -69,6 +71,9 @@ const pwa = VitePWA({
 export default defineConfig(({ command }) => ({
   plugins: [react(), pwa],
   server: { host: true, port: PORT, strictPort: true },
-  define: { __LAN_ORIGIN__: JSON.stringify(command === 'serve' ? lanOrigin() : null) },
+  define: {
+    __LAN_ORIGIN__: JSON.stringify(command === 'serve' ? lanOrigin() : null),
+    __APP_VERSION__: JSON.stringify(VERSION),
+  },
   test: { environment: 'jsdom', include: ['test/**/*.test.{ts,tsx}'] },
 }));

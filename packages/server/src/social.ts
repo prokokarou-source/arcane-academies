@@ -3,6 +3,7 @@ import {
   MIN_PASSWORD,
   PROFILE_HISTORY,
   USERNAME_RE,
+  type Avatar,
   type ErrorCode,
   type FriendList,
   type LeaderRow,
@@ -12,7 +13,7 @@ import type { Clock } from './clock';
 import { hashPassword, hashToken, newToken, verifyPassword } from './passwords';
 import { isPushEndpoint, Push, type PushConfig } from './push';
 import type { Conn } from './room';
-import { NO_STATS, usernameKey, type GameRecord, type Store, type User } from './store';
+import { NO_STATS, usernameKey, withAvatar, type GameRecord, type Store, type User } from './store';
 
 export interface SocialOptions {
   /** The room code this connection is seated in, if any (for invites). */
@@ -20,6 +21,8 @@ export interface SocialOptions {
   clock: Clock;
   /** Web Push (VAPID key + sender); push notifications are off without it. */
   push?: PushConfig | null;
+  /** A user's avatar changed; these are their logged-in connections (rooms show the new one). */
+  onAvatar?(conns: Conn[]): void;
 }
 
 /** Failed logins allowed per username inside the window before further tries are refused. */
@@ -135,6 +138,7 @@ export class Social {
       return;
     }
     if (msg.t === 'pushUnsubscribe') return this.store.removePushSub(msg.endpoint, me.id);
+    if (msg.t === 'setAvatar') return this.setAvatar(me, msg.avatar);
     const other = await this.store.findUser(msg.username);
     if (!other || other.id === me.id) return this.fail(conn, 'no_user');
     const link = await this.store.link(me.id, other.id);
@@ -204,7 +208,7 @@ export class Social {
       return this.fail(conn, 'bad_login');
     }
     this.failures.delete(key);
-    await this.startSession(conn, { id: stored.id, username: stored.username });
+    await this.startSession(conn, { id: stored.id, username: stored.username, ...withAvatar(stored.avatar) });
   }
 
   /** Check the logged-in user's password, counting failures like logins do. */
@@ -275,7 +279,7 @@ export class Social {
 
   private async enter(conn: Conn, user: User, tokenHash: string, token?: string): Promise<void> {
     this.bind(conn, user, tokenHash);
-    conn.send({ t: 'account', username: user.username, ...(token ? { token } : {}) });
+    conn.send({ t: 'account', username: user.username, ...withAvatar(user.avatar), ...(token ? { token } : {}) });
     conn.send({ t: 'pushKey', key: this.push.publicKey });
     conn.send({ t: 'friends', list: await this.friendList(user.id) });
   }
@@ -291,6 +295,20 @@ export class Social {
   private dummy(): Promise<string> {
     this.dummyHash ??= hashPassword('not-a-real-password');
     return this.dummyHash;
+  }
+
+  /** Save the avatar, then tell my tabs, my rooms and my online friends. */
+  private async setAvatar(me: User, avatar: Avatar | null): Promise<void> {
+    await this.store.setAvatar(me.id, avatar);
+    const conns = [...(this.userConns.get(me.id) ?? [])];
+    for (const c of conns) {
+      const x = this.connUser.get(c)!;
+      this.connUser.set(c, { ...x, user: { ...x.user, avatar } });
+      c.send({ t: 'account', username: x.user.username, avatar });
+    }
+    this.opts.onAvatar?.(conns);
+    const friends = (await this.store.friendRows(me.id)).filter((r) => r.accepted);
+    await Promise.all(friends.map((r) => this.pushFriends(r.other.id)));
   }
 
   // ---------- presence ----------
@@ -339,7 +357,7 @@ export class Social {
     const byName = (a: string, b: string) => a.localeCompare(b, 'en', { sensitivity: 'base' });
     const friends = rows
       .filter((r) => r.accepted)
-      .map((r) => ({ username: r.other.username, online: this.isOnline(r.other.id) }))
+      .map((r) => ({ username: r.other.username, online: this.isOnline(r.other.id), ...withAvatar(r.other.avatar) }))
       .sort((a, b) => Number(b.online) - Number(a.online) || byName(a.username, b.username));
     const pending = (outgoing: boolean) =>
       rows
@@ -364,6 +382,7 @@ export class Social {
       t: 'profile',
       profile: {
         username: me.username,
+        ...withAvatar(me.avatar),
         ...(totals.get(me.id) ?? NO_STATS),
         recent: recent.map((r) => ({ at: r.playedAt, academyId: r.academyId, score: r.score, place: r.place, won: r.won, players: r.players })),
       },
@@ -379,7 +398,7 @@ export class Social {
     return people
       .map((u) => {
         const t = totals.get(u.id) ?? NO_STATS;
-        return { username: u.username, games: t.games, wins: t.wins, me: u.id === me.id };
+        return { username: u.username, games: t.games, wins: t.wins, me: u.id === me.id, ...withAvatar(u.avatar) };
       })
       .sort(
         (a, b) =>

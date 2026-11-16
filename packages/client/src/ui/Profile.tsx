@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { ACADEMIES } from '@arcane/engine';
 import { useClient, useClientState, useT } from './context';
 import { ScreenHead } from './ScreenHead';
+import { AvatarGlyph } from './Avatar';
 
 const academyName = (id: string) => ACADEMIES.find((a) => a.id === id)?.name ?? id;
 
@@ -9,14 +10,17 @@ const academyName = (id: string) => ACADEMIES.find((a) => a.id === id)?.name ?? 
 export function Profile(props: { onBack(): void }) {
   const client = useClient();
   const t = useT();
-  const { profile, account } = useClientState();
+  const { profile, account, avatar } = useClientState();
   useEffect(() => client.requestProfile(), [client]);
   const p = profile?.username === account ? profile : null;
 
   return (
     <main className="screen">
       <ScreenHead title={t('profile')} onBack={props.onBack} />
-      <p className="muted small">{t('signedInAs', { name: account ?? '' })}</p>
+      <p className="muted small profile-who">
+        <AvatarGlyph avatar={avatar} size={32} />
+        {t('signedInAs', { name: account ?? '' })}
+      </p>
       {!p ? (
         <p className="status loading">{t('loadingStats')}</p>
       ) : (

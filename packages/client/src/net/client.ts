@@ -4,7 +4,7 @@
  */
 import type { Action, BotLevel, PlayerView } from '@arcane/engine';
 import { SOCIAL_ERRORS, isSocialMessage } from '@arcane/protocol';
-import type { ClientMessage, ErrorCode, FriendList, LeaderRow, LobbyState, Profile, PushSub, QuickSize, ReactionId, RoomSettings, SeatId, ServerMessage } from '@arcane/protocol';
+import type { Avatar, ClientMessage, ErrorCode, FriendList, LeaderRow, LobbyState, Profile, PushSub, QuickSize, ReactionId, RoomSettings, SeatId, ServerMessage } from '@arcane/protocol';
 import { termDuels } from '../game/derive';
 import { clearAccountToken, clearSession, loadAccountToken, loadSession, saveAccountToken, saveSession, type Session } from './session';
 
@@ -75,6 +75,8 @@ export interface ClientState {
   restoring: boolean;
   /** Logged-in username, or null for a guest. */
   account: string | null;
+  /** My account's avatar (null: guest or the default). */
+  avatar: Avatar | null;
   /** A signup, login or saved-login check is waiting for the server. */
   accountPending: boolean;
   friends: FriendList | null;
@@ -115,6 +117,7 @@ const INITIAL: ClientState = {
   acting: false,
   restoring: false,
   account: null,
+  avatar: null,
   accountPending: false,
   friends: null,
   invites: [],
@@ -285,13 +288,13 @@ export class GameClient {
         if (msg.username === null) {
           this.accountToken = null;
           clearAccountToken(this.deps.storage);
-          this.set({ account: null, accountPending: false, friends: null, invites: [], socialError: null, pushKey: null, ...NO_STATS });
+          this.set({ account: null, avatar: null, accountPending: false, friends: null, invites: [], socialError: null, pushKey: null, ...NO_STATS });
         } else {
           if (msg.token) {
             this.accountToken = msg.token;
             saveAccountToken(this.deps.storage, msg.token);
           }
-          this.set({ account: msg.username, accountPending: false, socialError: null });
+          this.set({ account: msg.username, avatar: msg.avatar ?? null, accountPending: false, socialError: null });
         }
         return;
       case 'friends':
@@ -361,9 +364,11 @@ export class GameClient {
   }
 
   private onGame(msg: GameMsg): void {
-    const prev = this.state.game?.view ?? null;
+    // A finished game followed by a fresh one (play again): nothing carries over.
+    const restart = !!this.state.game?.result && !msg.result;
+    const prev = restart ? null : (this.state.game?.view ?? null);
     const added = termDuels(prev, msg.view);
-    const duels = added && prev ? { term: prev.term, view: msg.view, deltas: added[msg.view.me]?.deltas ?? [] } : this.state.duels;
+    const duels = added && prev ? { term: prev.term, view: msg.view, deltas: added[msg.view.me]?.deltas ?? [] } : restart ? null : this.state.duels;
     this.set({ game: msg, prevView: prev, duels, lobby: null, acting: false });
   }
 
@@ -488,8 +493,25 @@ export class GameClient {
     this.send({ t: 'act', action });
   }
 
+  /** After the game, host: back to the lobby to change seats. */
   rematch(): void {
     this.send({ t: 'rematch' });
+  }
+
+  /** After the game: I am (not) ready to play again at the same table. */
+  playAgain(ready = true): void {
+    this.send({ t: 'playAgain', ready });
+  }
+
+  /** After the game, host: start the next game now. */
+  playAgainNow(): void {
+    this.send({ t: 'playAgainNow' });
+  }
+
+  /** Pick my account avatar (null: the default). */
+  setAvatar(avatar: Avatar | null): void {
+    this.set({ avatar });
+    this.send({ t: 'setAvatar', avatar });
   }
 
   /** Send a quick reaction now, or not at all: a stale cheer after a reconnect would be odd. */

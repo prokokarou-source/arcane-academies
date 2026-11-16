@@ -57,10 +57,20 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
   const store = opts.store ?? new MemoryStore();
   // Rooms ask Social who is logged in on a connection and hand it finished games to record.
   const manager: RoomManager = new RoomManager(
-    { ...opts.manager, accountOf: (c) => social.userOf(c)?.id ?? null, onResults: (r) => social.recordResults(r) },
+    {
+      ...opts.manager,
+      accountOf: (c) => social.userOf(c)?.id ?? null,
+      avatarOf: (c) => social.userOf(c)?.avatar ?? null,
+      onResults: (r) => social.recordResults(r),
+    },
     realClock,
   );
-  const social: Social = new Social(store, { roomOf: (c) => manager.codeOf(c), clock: realClock, push: opts.push ?? null });
+  const social: Social = new Social(store, {
+    roomOf: (c) => manager.codeOf(c),
+    clock: realClock,
+    push: opts.push ?? null,
+    onAvatar: (conns) => conns.forEach((c) => manager.refreshAvatar(c)),
+  });
   const serveStatic = opts.staticDir ? staticHandler(opts.staticDir) : null;
   const reportClientError = clientErrorHandler(opts.clientErrors);
   const http = createServer((req, res) => {

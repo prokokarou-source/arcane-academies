@@ -135,6 +135,21 @@ function contract(name: string, make: () => Store) {
       expect(kept).toHaveLength(MAX_PUSH_SUBS);
       expect(kept).not.toContain(`https://push.example.com/${uniq}/g0`);
     });
+
+    it('saves an avatar, shows it on login, session and friend rows, and resets it', async () => {
+      const av = (await store.createUser(n('Av'), 'h'))!;
+      const fr = (await store.createUser(n('Aw'), 'h'))!;
+      expect((await store.findUser(n('Av')))!.avatar).toBeUndefined();
+      await store.setAvatar(av.id, { icon: 'owl', color: 'teal' });
+      expect((await store.findUser(n('Av')))!.avatar).toEqual({ icon: 'owl', color: 'teal' });
+      const tok = `avatar-${uniq}`;
+      await store.createSession(tok, av.id);
+      expect(await store.sessionUser(tok)).toEqual({ id: av.id, username: n('Av'), avatar: { icon: 'owl', color: 'teal' } });
+      await store.addRequest(fr.id, av.id);
+      expect((await store.friendRows(fr.id))[0].other.avatar).toEqual({ icon: 'owl', color: 'teal' });
+      await store.setAvatar(av.id, null);
+      expect(await store.sessionUser(tok)).toEqual({ id: av.id, username: n('Av') });
+    });
   });
 }
 

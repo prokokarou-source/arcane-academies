@@ -1,4 +1,4 @@
-import type { PushSub } from '@arcane/protocol';
+import type { Avatar, PushSub } from '@arcane/protocol';
 
 /**
  * Where accounts, login sessions and friendships live.
@@ -9,6 +9,8 @@ export interface User {
   id: string;
   /** As the player typed it at signup. */
   username: string;
+  /** Chosen emblem; null or absent = the default. */
+  avatar?: Avatar | null;
 }
 
 export interface StoredUser extends User {
@@ -86,12 +88,17 @@ export interface Store {
   pushSubs(userId: string): Promise<PushSub[]>;
   /** Forget a subscription; with `userId`, only if it is that user's. */
   removePushSub(endpoint: string, userId?: string): Promise<void>;
+  /** Null resets to the default avatar. */
+  setAvatar(userId: string, avatar: Avatar | null): Promise<void>;
 }
 
 /** Devices kept per user; the oldest is dropped beyond this. */
 export const MAX_PUSH_SUBS = 10;
 
 export const usernameKey = (u: string) => u.toLowerCase();
+
+/** Users carry an avatar only once one is chosen. */
+export const withAvatar = (a: Avatar | null | undefined): { avatar?: Avatar } => (a ? { avatar: a } : {});
 
 export class MemoryStore implements Store {
   private users = new Map<string, StoredUser>();
@@ -127,7 +134,7 @@ export class MemoryStore implements Store {
   async sessionUser(tokenHash: string): Promise<User | null> {
     const id = this.sessions.get(tokenHash);
     const u = id ? this.users.get(id) : undefined;
-    return u ? { id: u.id, username: u.username } : null;
+    return u ? { id: u.id, username: u.username, ...withAvatar(u.avatar) } : null;
   }
 
   async deleteSession(tokenHash: string): Promise<void> {
@@ -157,7 +164,7 @@ export class MemoryStore implements Store {
     for (const l of this.links) {
       if (l.from !== userId && l.to !== userId) continue;
       const other = this.users.get(l.from === userId ? l.to : l.from)!;
-      rows.push({ other: { id: other.id, username: other.username }, accepted: l.accepted, outgoing: l.from === userId });
+      rows.push({ other: { id: other.id, username: other.username, ...withAvatar(other.avatar) }, accepted: l.accepted, outgoing: l.from === userId });
     }
     return rows;
   }
@@ -222,5 +229,10 @@ export class MemoryStore implements Store {
   async removePushSub(endpoint: string, userId?: string): Promise<void> {
     const x = this.push.get(endpoint);
     if (x && (userId === undefined || x.userId === userId)) this.push.delete(endpoint);
+  }
+
+  async setAvatar(userId: string, avatar: Avatar | null): Promise<void> {
+    const u = this.users.get(userId);
+    if (u) u.avatar = avatar ? { ...avatar } : null;
   }
 }

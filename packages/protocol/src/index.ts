@@ -26,6 +26,34 @@ export const DEFAULT_SETTINGS: RoomSettings = { graceMs: 60_000, turnTimerMs: nu
 export const MAX_NAME = 20;
 export const MAX_MESSAGE_BYTES = 16_384;
 
+/** Account avatars: an emblem drawn in one of the theme colours. */
+export const AVATAR_ICONS = [
+  'owl', 'flame', 'wave', 'leaf', 'star', 'moon', 'key', 'crown',
+  'quill', 'eye', 'hourglass', 'rune', 'crystal', 'tower', 'comet', 'mask',
+] as const;
+export const AVATAR_COLORS = ['gold', 'ember', 'rose', 'violet', 'azure', 'teal', 'moss', 'silver'] as const;
+export type AvatarIcon = (typeof AVATAR_ICONS)[number];
+export type AvatarColor = (typeof AVATAR_COLORS)[number];
+export interface Avatar {
+  icon: AvatarIcon;
+  color: AvatarColor;
+}
+
+export function isAvatar(v: unknown): v is Avatar {
+  if (typeof v !== 'object' || v === null) return false;
+  const { icon, color } = v as Record<string, unknown>;
+  return (AVATAR_ICONS as readonly unknown[]).includes(icon) && (AVATAR_COLORS as readonly unknown[]).includes(color);
+}
+
+/** Stored as "icon:color"; anything else reads as no avatar. */
+export const avatarKey = (a: Avatar): string => `${a.icon}:${a.color}`;
+export function parseAvatarKey(s: string | null | undefined): Avatar | null {
+  if (!s) return null;
+  const [icon, color] = s.split(':');
+  const a = { icon, color };
+  return isAvatar(a) ? a : null;
+}
+
 export interface LobbySeat {
   id: SeatId;
   kind: 'human' | 'bot';
@@ -34,6 +62,8 @@ export interface LobbySeat {
   academyId: string | null;
   side: 'A' | 'B';
   connected: boolean;
+  /** Logged-in players' chosen avatar; absent for guests and bots. */
+  avatar?: Avatar;
 }
 
 export interface LobbyState {
@@ -59,6 +89,11 @@ export interface SeatStatus {
   kind: 'human' | 'bot' | 'archmage';
   connected: boolean;
   botControlled: boolean;
+  avatar?: Avatar;
+  /** The room's host (who may start the rematch early). */
+  host?: boolean;
+  /** After the game: tapped "Play again". */
+  ready?: boolean;
 }
 
 /** Usernames: 3–20 letters, digits or underscores; unique ignoring case. */
@@ -69,6 +104,7 @@ export const MAX_PASSWORD = 128;
 export interface FriendInfo {
   username: string;
   online: boolean;
+  avatar?: Avatar;
 }
 
 /** My friend list: accepted friends plus requests waiting on either side. */
@@ -95,6 +131,7 @@ export interface GameSummary {
 
 export interface Profile {
   username: string;
+  avatar?: Avatar;
   games: number;
   wins: number;
   totalScore: number;
@@ -109,6 +146,7 @@ export interface LeaderRow {
   games: number;
   wins: number;
   me: boolean;
+  avatar?: Avatar;
 }
 
 export const PROFILE_HISTORY = 10;
@@ -142,7 +180,9 @@ export type SocialMessage =
   | { t: 'invite'; username: string }
   /** Notify this device (logged-in user) about invites and friend requests while the app is closed. */
   | { t: 'pushSubscribe'; sub: PushSub }
-  | { t: 'pushUnsubscribe'; endpoint: string };
+  | { t: 'pushUnsubscribe'; endpoint: string }
+  /** Pick my avatar (null: back to the default). */
+  | { t: 'setAvatar'; avatar: Avatar | null };
 
 export const SOCIAL_TYPES: readonly SocialMessage['t'][] = [
   'signup',
@@ -160,6 +200,7 @@ export const SOCIAL_TYPES: readonly SocialMessage['t'][] = [
   'deleteAccount',
   'pushSubscribe',
   'pushUnsubscribe',
+  'setAvatar',
 ];
 
 export const isSocialMessage = (m: ClientMessage): m is SocialMessage => (SOCIAL_TYPES as readonly string[]).includes(m.t);
@@ -185,7 +226,12 @@ export type ClientMessage =
   | { t: 'settings'; settings: Partial<RoomSettings> }
   | { t: 'start' }
   | { t: 'act'; action: Action }
+  /** After the game, host only: back to the lobby to change seats. */
   | { t: 'rematch' }
+  /** After the game: I want to play again with the same table (false: not any more). */
+  | { t: 'playAgain'; ready: boolean }
+  /** After the game, host only: start the next game now with whoever is ready. */
+  | { t: 'playAgainNow' }
   /** Search for strangers to play with (leaves any room first). */
   | { t: 'quickMatch'; name: string; size: QuickSize }
   | { t: 'quickCancel' }
@@ -257,7 +303,7 @@ export type ServerMessage =
   /** Someone in the room reacted. `seat` is their engine seat during a game, else null. */
   | { t: 'reaction'; seatId: SeatId; seat: number | null; reaction: ReactionId }
   /** Logged in (token only after signup/login, to be saved) or logged out (username null). */
-  | { t: 'account'; username: string | null; token?: string }
+  | { t: 'account'; username: string | null; token?: string; avatar?: Avatar | null }
   | { t: 'friends'; list: FriendList }
   /** A friend came online or went offline. */
   | { t: 'presence'; username: string; online: boolean }
@@ -381,6 +427,13 @@ function parseObj(m: Obj): ClientMessage | null {
     }
     case 'pushUnsubscribe':
       return isEndpoint(m.endpoint) ? { t: 'pushUnsubscribe', endpoint: m.endpoint } : null;
+    case 'setAvatar':
+      if (m.avatar === null) return { t: 'setAvatar', avatar: null };
+      return isAvatar(m.avatar) ? { t: 'setAvatar', avatar: { icon: m.avatar.icon, color: m.avatar.color } } : null;
+    case 'playAgain':
+      return typeof m.ready === 'boolean' ? { t: 'playAgain', ready: m.ready } : null;
+    case 'playAgainNow':
+      return { t: 'playAgainNow' };
     case 'create': {
       const n = name(m.name);
       return n ? { t: 'create', name: n } : null;

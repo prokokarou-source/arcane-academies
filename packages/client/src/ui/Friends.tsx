@@ -3,6 +3,7 @@ import type { LeaderRow } from '@arcane/protocol';
 import { USERNAME_RE } from '@arcane/protocol';
 import { useClient, useClientState, useT } from './context';
 import { PushToggle } from './PushToggle';
+import { AvatarGlyph } from './Avatar';
 import { ScreenHead } from './ScreenHead';
 
 /** Friend list with online status, requests, and (inside a lobby) invites. */
@@ -105,6 +106,7 @@ export function Friends(props: { onBack(): void; onAccount(): void }) {
               <li key={f.username} className="seat">
                 <div className="seat-top">
                   <span className={`dot ${f.online ? 'on' : 'off'}`} />
+                  <AvatarGlyph avatar={f.avatar} size={24} />
                   <span className="name">{f.username}</span>
                   <span className="muted small">{f.online ? t('online') : t('offline')}</span>
                   {lobby && (
@@ -166,6 +168,7 @@ function Leaderboard() {
         <li key={r.username} className={`seat${r.me ? ' lb-me' : ''}`}>
           <div className="seat-top">
             <span className="rank">{i + 1}</span>
+            <AvatarGlyph avatar={r.avatar} size={24} />
             <span className="name">{r.me ? `${r.username} (${t('you')})` : r.username}</span>
             <span className="lb-stats">
               <span className="small">{`${t('statWins')}: ${r.wins}`}</span>

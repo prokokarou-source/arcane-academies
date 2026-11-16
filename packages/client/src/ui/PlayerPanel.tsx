@@ -4,6 +4,7 @@ import { duelPowerOf, productionOf, researchOf, researchWildOf, towerOf, towerSt
 import { useT } from './context';
 import { CostView, EffectsView, EffectView, ResearchView } from './Glyphs';
 import { academyArt, Crest } from './Icon';
+import { AvatarGlyph } from './Avatar';
 import { FAMILIES as ORDER, FamilyIcon } from './Family';
 
 /** A bottom sheet with one academy's public state. */
@@ -20,7 +21,10 @@ export function PlayerPanel(props: { player: PublicPlayer; status?: SeatStatus; 
         <img className="academy-art" src={academyArt(p.academyId)} alt="" />
         <header className="sheet-head">
           <Crest academyId={p.academyId} size={44} />
-          <h3>{name}</h3>
+          <h3>
+            {props.status?.kind === 'human' && <AvatarGlyph avatar={props.status.avatar} size={24} />}
+            {name}
+          </h3>
           <span className="muted small">{`${academyDef(p.academyId).name} · ${t('side')} ${p.side}`}</span>
         </header>
         <dl className="stats">

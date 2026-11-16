@@ -1,7 +1,7 @@
 import pg from 'pg';
-import type { PushSub } from '@arcane/protocol';
+import { avatarKey, parseAvatarKey, type Avatar, type PushSub } from '@arcane/protocol';
 import type { FriendLink, FriendRow, GameRecord, StatTotals, Store, StoredUser, User } from './store';
-import { MAX_PUSH_SUBS, NO_STATS, usernameKey } from './store';
+import { MAX_PUSH_SUBS, NO_STATS, usernameKey, withAvatar } from './store';
 
 /** Run on every start; each statement is safe to repeat. */
 const MIGRATIONS = [
@@ -45,9 +45,15 @@ const MIGRATIONS = [
      created_at timestamptz not null default now()
    )`,
   `create index if not exists push_subscriptions_user on push_subscriptions(user_id)`,
+  // Avatar as "icon:color"; null = the default.
+  `alter table users add column if not exists avatar text`,
 ];
 
-const user = (r: { id: string | number; username: string }): User => ({ id: String(r.id), username: r.username });
+const user = (r: { id: string | number; username: string; avatar?: string | null }): User => ({
+  id: String(r.id),
+  username: r.username,
+  ...withAvatar(parseAvatarKey(r.avatar)),
+});
 
 /** Postgres store (e.g. a free Neon database). The connection string comes from DATABASE_URL. */
 export class PgStore implements Store {
@@ -85,14 +91,14 @@ export class PgStore implements Store {
   async createUser(username: string, passHash: string): Promise<User | null> {
     const r = await this.q(
       `insert into users (username, username_key, pass_hash) values ($1, $2, $3)
-       on conflict (username_key) do nothing returning id, username`,
+       on conflict (username_key) do nothing returning id, username, avatar`,
       [username, usernameKey(username), passHash],
     );
     return r.rows[0] ? user(r.rows[0]) : null;
   }
 
   async findUser(username: string): Promise<StoredUser | null> {
-    const r = await this.q('select id, username, pass_hash from users where username_key = $1', [usernameKey(username)]);
+    const r = await this.q('select id, username, avatar, pass_hash from users where username_key = $1', [usernameKey(username)]);
     const row = r.rows[0];
     return row ? { ...user(row), passHash: row.pass_hash } : null;
   }
@@ -102,7 +108,7 @@ export class PgStore implements Store {
   }
 
   async sessionUser(tokenHash: string): Promise<User | null> {
-    const r = await this.q('select u.id, u.username from sessions s join users u on u.id = s.user_id where s.token_hash = $1', [tokenHash]);
+    const r = await this.q('select u.id, u.username, u.avatar from sessions s join users u on u.id = s.user_id where s.token_hash = $1', [tokenHash]);
     return r.rows[0] ? user(r.rows[0]) : null;
   }
 
@@ -139,7 +145,7 @@ export class PgStore implements Store {
 
   async friendRows(userId: string): Promise<FriendRow[]> {
     const r = await this.q(
-      `select u.id, u.username, f.accepted, f.requester = $1 as outgoing
+      `select u.id, u.username, u.avatar, f.accepted, f.requester = $1 as outgoing
        from friendships f join users u on u.id = case when f.requester = $1 then f.addressee else f.requester end
        where f.requester = $1 or f.addressee = $1`,
       [userId],
@@ -219,5 +225,9 @@ export class PgStore implements Store {
   async removePushSub(endpoint: string, userId?: string): Promise<void> {
     if (userId === undefined) await this.q('delete from push_subscriptions where endpoint = $1', [endpoint]);
     else await this.q('delete from push_subscriptions where endpoint = $1 and user_id = $2', [endpoint, userId]);
+  }
+
+  async setAvatar(userId: string, avatar: Avatar | null): Promise<void> {
+    await this.q('update users set avatar = $2 where id = $1', [userId, avatar ? avatarKey(avatar) : null]);
   }
 }

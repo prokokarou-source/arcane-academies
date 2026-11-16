@@ -11,6 +11,7 @@ import { Profile } from './Profile';
 import { QuickMatch } from './QuickMatch';
 import { Rules } from './Rules';
 import { Settings } from './Settings';
+import { RecoveryCodeDialog } from './Safety';
 
 type Page = 'home' | 'rules' | 'settings' | 'account' | 'friends' | 'privacy' | 'profile';
 
@@ -138,6 +139,7 @@ export function App({ initialRoom, initialPage }: { initialRoom?: string; initia
         </div>
       )}
       {screen}
+      <RecoveryCodeDialog />
     </div>
   );
 }

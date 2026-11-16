@@ -1,15 +1,17 @@
 import {
   MAX_PASSWORD,
   MIN_PASSWORD,
+  normalizeRecoveryCode,
   PROFILE_HISTORY,
   USERNAME_RE,
   type ErrorCode,
   type FriendList,
   type LeaderRow,
+  type ReportReason,
   type SocialMessage,
 } from '@arcane/protocol';
 import type { Clock } from './clock';
-import { hashPassword, hashToken, newToken, verifyPassword } from './passwords';
+import { hashPassword, hashToken, newRecoveryCode, newToken, verifyPassword } from './passwords';
 import { isPushEndpoint, Push, type PushConfig } from './push';
 import type { Conn } from './room';
 import { NO_STATS, usernameKey, type GameRecord, type Store, type User } from './store';
@@ -25,6 +27,9 @@ export interface SocialOptions {
 /** Failed logins allowed per username inside the window before further tries are refused. */
 export const MAX_FAILURES = 5;
 export const FAILURE_WINDOW_MS = 10 * 60_000;
+/** Reports one account may send inside REPORT_WINDOW_MS. */
+export const MAX_REPORTS = 10;
+export const REPORT_WINDOW_MS = 60 * 60_000;
 
 const MESSAGES: Partial<Record<ErrorCode, string>> = {
   bad_username: 'Usernames are 3–20 letters, digits or _',
@@ -41,6 +46,7 @@ const MESSAGES: Partial<Record<ErrorCode, string>> = {
   busy: 'Still working on your last request',
   unavailable: 'Accounts are unavailable right now',
   wrong_password: 'Wrong password',
+  bad_recovery: 'Wrong username or recovery code',
 };
 
 /**
@@ -53,6 +59,8 @@ export class Social {
   private gone = new WeakSet<Conn>();
   private busy = new WeakSet<Conn>();
   private failures = new Map<string, number[]>();
+  /** Accounts blocked by each online user (loaded at login), so rooms and quick match can ask synchronously. */
+  private blockedBy = new Map<string, Set<string>>();
   private dummyHash: Promise<string> | null = null;
   readonly push: Push;
 
@@ -71,6 +79,19 @@ export class Social {
     return this.connUser.get(conn)?.user ?? null;
   }
 
+  /** True when the account logged in on `viewer` blocked `accountId`. */
+  hasBlocked(viewer: Conn, accountId: string): boolean {
+    const me = this.userOf(viewer);
+    return !!me && !!this.blockedBy.get(me.id)?.has(accountId);
+  }
+
+  /** True when the accounts on these connections must be kept apart (either blocked the other). */
+  apart(a: Conn, b: Conn): boolean {
+    const ua = this.userOf(a);
+    const ub = this.userOf(b);
+    return !!ua && !!ub && (!!this.blockedBy.get(ua.id)?.has(ub.id) || !!this.blockedBy.get(ub.id)?.has(ua.id));
+  }
+
   /** Handle one message; a failing store answers 'unavailable' instead of throwing. */
   async handle(conn: Conn, msg: SocialMessage): Promise<void> {
     try {
@@ -87,6 +108,8 @@ export class Social {
       case 'login':
       case 'changePassword':
       case 'deleteAccount':
+      case 'recover':
+      case 'createRecoveryCode':
         // These hash a password: one at a time per connection.
         if (this.busy.has(conn)) return this.fail(conn, 'busy');
         this.busy.add(conn);
@@ -94,6 +117,8 @@ export class Social {
           if (msg.t === 'signup') return await this.signup(conn, msg.username, msg.password);
           if (msg.t === 'login') return await this.login(conn, msg.username, msg.password);
           if (msg.t === 'changePassword') return await this.changePassword(conn, msg.current, msg.next);
+          if (msg.t === 'recover') return await this.recover(conn, msg.username, msg.code, msg.password);
+          if (msg.t === 'createRecoveryCode') return await this.createRecoveryCode(conn, msg.password);
           return await this.deleteAccount(conn, msg.password);
         } finally {
           this.busy.delete(conn);
@@ -137,9 +162,22 @@ export class Social {
     if (msg.t === 'pushUnsubscribe') return this.store.removePushSub(msg.endpoint, me.id);
     const other = await this.store.findUser(msg.username);
     if (!other || other.id === me.id) return this.fail(conn, 'no_user');
+    switch (msg.t) {
+      case 'block':
+        await this.store.addBlock(me.id, other.id);
+        await this.refreshBlocks(me.id);
+        break;
+      case 'unblock':
+        await this.store.removeBlock(me.id, other.id);
+        return this.refreshBlocks(me.id);
+      case 'report':
+        return this.report(conn, me, other, msg.reason, msg.note);
+    }
     const link = await this.store.link(me.id, other.id);
     switch (msg.t) {
       case 'friendRequest':
+        // Blocked either way: nothing happens, and neither side sees a request.
+        if (await this.store.blockedEither(me.id, other.id)) break;
         // They already asked me: asking back is agreeing.
         if (link && !link.accepted && link.from === other.id) await this.store.accept(other.id, me.id);
         else if (!link) {
@@ -191,6 +229,43 @@ export class Social {
     const user = await this.store.createUser(username, await hashPassword(password));
     if (!user) return this.fail(conn, 'username_taken');
     await this.startSession(conn, user);
+    await this.issueRecoveryCode(conn, user.id);
+  }
+
+  /** Forgot password: a right recovery code sets the new password, ends every login, logs in here, and gives a new code. */
+  private async recover(conn: Conn, username: string, code: string, password: string): Promise<void> {
+    if (password.length < MIN_PASSWORD || password.length > MAX_PASSWORD) return this.fail(conn, 'bad_password');
+    const key = `recover:${usernameKey(username)}`;
+    if (this.recentFailures(key) >= MAX_FAILURES) return this.fail(conn, 'too_many_attempts');
+    const stored = USERNAME_RE.test(username) ? await this.store.findUser(username) : null;
+    // Same cost whether or not the account (or its code) exists.
+    const ok = await verifyPassword(normalizeRecoveryCode(code), stored?.recoveryHash ?? (await this.dummy()));
+    if (!stored?.recoveryHash || !ok) {
+      this.failures.set(key, [...(this.failures.get(key) ?? []), this.opts.clock.now()]);
+      return this.fail(conn, 'bad_recovery');
+    }
+    this.failures.delete(key);
+    // The used code dies with the old password; a new one is shown right away.
+    await this.store.setRecoveryHash(stored.id, null);
+    await this.store.setPassword(stored.id, await hashPassword(password));
+    await this.store.deleteSessions(stored.id);
+    this.endLogins(stored.id);
+    await this.startSession(conn, { id: stored.id, username: stored.username });
+    await this.issueRecoveryCode(conn, stored.id);
+  }
+
+  /** A new recovery code for my account (the old one stops working). */
+  private async createRecoveryCode(conn: Conn, password: string): Promise<void> {
+    const me = await this.checkPassword(conn, password);
+    if (me) await this.issueRecoveryCode(conn, me.id);
+  }
+
+  /** Make, store (hashed) and show a recovery code; skipped when the connection already closed, so no unseen code replaces the old one. */
+  private async issueRecoveryCode(conn: Conn, userId: string): Promise<void> {
+    if (this.gone.has(conn) || this.userOf(conn)?.id !== userId) return;
+    const code = newRecoveryCode();
+    await this.store.setRecoveryHash(userId, await hashPassword(normalizeRecoveryCode(code)));
+    conn.send({ t: 'recoveryCode', code });
   }
 
   private async login(conn: Conn, username: string, password: string): Promise<void> {
@@ -277,7 +352,33 @@ export class Social {
     this.bind(conn, user, tokenHash);
     conn.send({ t: 'account', username: user.username, ...(token ? { token } : {}) });
     conn.send({ t: 'pushKey', key: this.push.publicKey });
-    conn.send({ t: 'friends', list: await this.friendList(user.id) });
+    const [list, blocked] = await Promise.all([this.friendList(user.id), this.store.blocks(user.id)]);
+    if (this.isOnline(user.id)) this.blockedBy.set(user.id, new Set(blocked.map((u) => u.id)));
+    conn.send({ t: 'friends', list });
+    conn.send({ t: 'blocked', list: blockNames(blocked) });
+  }
+
+  // ---------- blocks and reports ----------
+
+  /** Reload whom a user blocked and tell every tab of theirs. */
+  private async refreshBlocks(userId: string): Promise<void> {
+    const blocked = await this.store.blocks(userId);
+    if (!this.userConns.get(userId)?.size) return;
+    this.blockedBy.set(userId, new Set(blocked.map((u) => u.id)));
+    for (const c of this.userConns.get(userId) ?? []) c.send({ t: 'blocked', list: blockNames(blocked) });
+  }
+
+  /** Save a report (with the room the reporter is in) and log one line; the note stays out of the log. */
+  private async report(conn: Conn, me: User, other: User, reason: ReportReason, note: string): Promise<void> {
+    const now = this.opts.clock.now();
+    const key = `report:${me.id}`;
+    const recent = (this.failures.get(key) ?? []).filter((t) => t > now - REPORT_WINDOW_MS);
+    if (recent.length >= MAX_REPORTS) return this.fail(conn, 'too_many_attempts');
+    this.failures.set(key, [...recent, now]);
+    const roomCode = this.opts.roomOf(conn);
+    await this.store.addReport({ reporterId: me.id, reporter: me.username, targetId: other.id, target: other.username, reason, note, roomCode, at: now });
+    console.log(`report: ${me.username} reported ${other.username} for ${reason}${roomCode ? ` in room ${roomCode}` : ''}`);
+    conn.send({ t: 'reported', username: other.username });
   }
 
   private recentFailures(key: string): number {
@@ -313,6 +414,7 @@ export class Social {
     set?.delete(conn);
     if (set && set.size === 0) {
       this.userConns.delete(me.user.id);
+      this.blockedBy.delete(me.user.id);
       this.announce(me.user, false);
     }
   }
@@ -406,3 +508,5 @@ export class Social {
     conn.send({ t: 'error', code, message: MESSAGES[code] ?? 'Something went wrong' });
   }
 }
+
+const blockNames = (users: User[]) => users.map((u) => u.username).sort((a, b) => a.localeCompare(b, 'en', { sensitivity: 'base' }));

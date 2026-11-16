@@ -46,6 +46,10 @@ export interface RoomOptions {
   seed?: () => number;
   /** The account (user id) logged in on this connection, if any. Its seat's result is recorded. */
   accountOf?(conn: Conn): string | null;
+  /** The username logged in on this connection, if any; shown on its seat. */
+  usernameOf?(conn: Conn): string | null;
+  /** True when the account on `viewer` blocked `accountId`: that account's reactions are not sent to it. */
+  hidesFrom?(viewer: Conn, accountId: string): boolean;
   /** Called once per finished game with one record per account seated in it. */
   onResults?(records: GameRecord[]): void;
 }
@@ -74,6 +78,8 @@ interface Member {
   reactAt?: number;
   /** Humans only: the account playing this seat, if logged in. */
   accountId?: string;
+  /** Its username, shown on the seat so others can befriend, block or report it. */
+  username?: string;
 }
 
 /**
@@ -134,8 +140,7 @@ export class Room {
       botControlled: false,
       engineSeat: -1,
     };
-    const account = this.opts.accountOf?.(conn);
-    if (account) m.accountId = account;
+    this.setAccount(m, conn);
     this.members.push(m);
     this.hostId ??= m.id;
     this.bind(m, conn);
@@ -156,8 +161,7 @@ export class Room {
     m.botControlled = false;
     m.left = false;
     // A login that finished after the seat was taken still counts.
-    const account = this.opts.accountOf?.(conn);
-    if (account && !m.accountId) m.accountId = account;
+    if (!m.accountId) this.setAccount(m, conn);
     this.bind(m, conn);
     conn.send({ t: 'joined', code: this.code, seatId: m.id, token: m.token! });
     this.broadcast();
@@ -410,7 +414,10 @@ export class Room {
     }
     m.reactTokens = tokens - 1;
     const seat = this.phase === 'game' ? m.engineSeat : null;
-    for (const x of this.members) x.conn?.send({ t: 'reaction', seatId: m.id, seat, reaction });
+    for (const x of this.members) {
+      if (!x.conn || (m.accountId && this.opts.hidesFrom?.(x.conn, m.accountId))) continue;
+      x.conn.send({ t: 'reaction', seatId: m.id, seat, reaction });
+    }
   }
 
   // ---------- game ----------
@@ -544,6 +551,7 @@ export class Room {
         academyId: m.academyId,
         side: m.side,
         connected: m.kind === 'bot' || !!m.conn,
+        ...(m.username ? { username: m.username } : {}),
       })),
     };
   }
@@ -557,11 +565,21 @@ export class Room {
         kind: p.config.kind,
         connected: p.config.kind !== 'human' || !!m?.conn,
         botControlled: !!m?.botControlled,
+        ...(m?.username ? { username: m.username } : {}),
       };
     });
   }
 
   // ---------- helpers ----------
+
+  /** Remember the account logged in on this connection (if any) for stats and the seat's username. */
+  private setAccount(m: Member, conn: Conn): void {
+    const account = this.opts.accountOf?.(conn);
+    if (!account) return;
+    m.accountId = account;
+    const username = this.opts.usernameOf?.(conn);
+    if (username) m.username = username;
+  }
 
   private bind(m: Member, conn: Conn): void {
     m.conn = conn;

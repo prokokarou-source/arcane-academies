@@ -3,6 +3,7 @@ import { MAX_PASSWORD, MIN_PASSWORD, USERNAME_RE } from '@arcane/protocol';
 import { usePush } from '../pwa/context';
 import { useClient, useClientState, useT } from './context';
 import { PushToggle } from './PushToggle';
+import { BlockedList, RecoverySection } from './Safety';
 import { ScreenHead } from './ScreenHead';
 
 /** Log in or create an account (username + password). Optional: guests can always play. */
@@ -11,9 +12,10 @@ export function Account(props: { onBack(): void; onFriends(): void; onProfile():
   const t = useT();
   const { account, accountPending, socialError } = useClientState();
   const push = usePush();
-  const [mode, setMode] = useState<'login' | 'signup'>('login');
+  const [mode, setMode] = useState<'login' | 'signup' | 'recover'>('login');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [code, setCode] = useState('');
 
   if (account) {
     return (
@@ -41,23 +43,31 @@ export function Account(props: { onBack(): void; onFriends(): void; onProfile():
         >
           {t('logOut')}
         </button>
+        <BlockedList />
         <ManageAccount />
       </main>
     );
   }
 
   const name = username.trim();
-  const ok = mode === 'login' ? name.length > 0 && password.length > 0 : USERNAME_RE.test(name) && password.length >= MIN_PASSWORD;
+  const ok =
+    mode === 'login'
+      ? name.length > 0 && password.length > 0
+      : mode === 'recover'
+        ? name.length > 0 && code.trim().length > 0 && password.length >= MIN_PASSWORD
+        : USERNAME_RE.test(name) && password.length >= MIN_PASSWORD;
   const submit = () => {
     if (!ok || accountPending) return;
     if (mode === 'login') client.login(name, password);
+    else if (mode === 'recover') client.recover(name, code.trim(), password);
     else client.signup(name, password);
   };
+  const title = mode === 'login' ? t('signIn') : mode === 'recover' ? t('recoverTitle') : t('signUp');
 
   return (
     <main className="screen">
-      <ScreenHead title={mode === 'login' ? t('signIn') : t('signUp')} onBack={props.onBack} />
-      <p className="muted small">{t('guestNote')}</p>
+      <ScreenHead title={title} onBack={props.onBack} />
+      <p className="muted small">{mode === 'recover' ? t('recoverHint') : t('guestNote')}</p>
       <form
         className="panel"
         onSubmit={(e) => {
@@ -78,18 +88,46 @@ export function Account(props: { onBack(): void; onFriends(): void; onProfile():
           />
           {mode === 'signup' && <span className="small">{t('usernameHint')}</span>}
         </label>
+        {mode === 'recover' && (
+          <label className="field">
+            <span>{t('recoveryCode')}</span>
+            <input
+              aria-label={t('recoveryCode')}
+              value={code}
+              maxLength={40}
+              autoComplete="off"
+              autoCapitalize="characters"
+              spellCheck={false}
+              placeholder="XXXX-XXXX-XXXX-XXXX"
+              onChange={(e) => setCode(e.target.value)}
+            />
+          </label>
+        )}
         <label className="field">
-          <span>{t('password')}</span>
+          <span>{mode === 'recover' ? t('newPassword') : t('password')}</span>
           <input
-            aria-label={t('password')}
+            aria-label={mode === 'recover' ? t('newPassword') : t('password')}
             type="password"
             value={password}
             maxLength={MAX_PASSWORD}
             autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
             onChange={(e) => setPassword(e.target.value)}
           />
-          {mode === 'signup' && <span className="small">{t('passwordHint')}</span>}
+          {mode !== 'login' && <span className="small">{t('passwordHint')}</span>}
         </label>
+        {mode === 'login' && (
+          <button
+            type="button"
+            className="link small"
+            onClick={() => {
+              client.clearSocialError();
+              setPassword('');
+              setMode('recover');
+            }}
+          >
+            {t('forgotPassword')}
+          </button>
+        )}
         {mode === 'signup' && props.onPrivacy && (
           <button type="button" className="link small" onClick={props.onPrivacy}>
             {t('privacy')}
@@ -101,7 +139,7 @@ export function Account(props: { onBack(): void; onFriends(): void; onProfile():
           </div>
         )}
         <button className="primary" type="submit" disabled={!ok || accountPending}>
-          {accountPending ? t('connecting') : mode === 'login' ? t('signIn') : t('signUp')}
+          {accountPending ? t('connecting') : mode === 'recover' ? t('resetPassword') : title}
         </button>
       </form>
       <button
@@ -178,6 +216,7 @@ function ManageAccount() {
           {t('changePassword')}
         </button>
       </form>
+      <RecoverySection />
       <button onClick={() => client.logoutAll()}>{t('logOutAll')}</button>
       {!deleting ? (
         <button className="link danger" onClick={() => setDeleting(true)}>

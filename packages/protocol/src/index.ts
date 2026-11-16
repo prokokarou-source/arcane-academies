@@ -34,6 +34,8 @@ export interface LobbySeat {
   academyId: string | null;
   side: 'A' | 'B';
   connected: boolean;
+  /** The account playing this seat, when its player is logged in. */
+  username?: string;
 }
 
 export interface LobbyState {
@@ -59,6 +61,8 @@ export interface SeatStatus {
   kind: 'human' | 'bot' | 'archmage';
   connected: boolean;
   botControlled: boolean;
+  /** The account playing this seat, when its player is logged in. */
+  username?: string;
 }
 
 /** Usernames: 3–20 letters, digits or underscores; unique ignoring case. */
@@ -113,6 +117,17 @@ export interface LeaderRow {
 
 export const PROFILE_HISTORY = 10;
 
+/** Why a player is reported. */
+export const REPORT_REASONS = ['cheating', 'name', 'harassment', 'other'] as const;
+export type ReportReason = (typeof REPORT_REASONS)[number];
+export const MAX_REPORT_NOTE = 200;
+
+/** Recovery codes: RECOVERY_GROUPS groups of 4 from an alphabet without look-alikes (no 0/O, 1/I/L). */
+export const RECOVERY_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+export const RECOVERY_GROUPS = 4;
+/** Uppercase, without spaces or dashes: what the server hashes and compares. */
+export const normalizeRecoveryCode = (code: string) => code.toUpperCase().replace(/[^A-Z0-9]/g, '');
+
 /** A browser push subscription (PushSubscription.toJSON()), saved so the server can notify a closed app. */
 export interface PushSub {
   endpoint: string;
@@ -142,7 +157,16 @@ export type SocialMessage =
   | { t: 'invite'; username: string }
   /** Notify this device (logged-in user) about invites and friend requests while the app is closed. */
   | { t: 'pushSubscribe'; sub: PushSub }
-  | { t: 'pushUnsubscribe'; endpoint: string };
+  | { t: 'pushUnsubscribe'; endpoint: string }
+  /** Block an account: ends any friendship, hides invites, requests and reactions, never quick-matched together. */
+  | { t: 'block'; username: string }
+  | { t: 'unblock'; username: string }
+  /** Report an account (the room I am in is added by the server). */
+  | { t: 'report'; username: string; reason: ReportReason; note: string }
+  /** Forgot password: the recovery code sets a new password and logs in. */
+  | { t: 'recover'; username: string; code: string; password: string }
+  /** Make a new recovery code for my account (replaces the old one). */
+  | { t: 'createRecoveryCode'; password: string };
 
 export const SOCIAL_TYPES: readonly SocialMessage['t'][] = [
   'signup',
@@ -160,6 +184,11 @@ export const SOCIAL_TYPES: readonly SocialMessage['t'][] = [
   'deleteAccount',
   'pushSubscribe',
   'pushUnsubscribe',
+  'block',
+  'unblock',
+  'report',
+  'recover',
+  'createRecoveryCode',
 ];
 
 export const isSocialMessage = (m: ClientMessage): m is SocialMessage => (SOCIAL_TYPES as readonly string[]).includes(m.t);
@@ -221,7 +250,8 @@ export type ErrorCode =
   | 'busy'
   | 'invite_no_room'
   | 'unavailable'
-  | 'wrong_password';
+  | 'wrong_password'
+  | 'bad_recovery';
 
 /** Errors that belong to the account and friend screens rather than the room. */
 export const SOCIAL_ERRORS: readonly ErrorCode[] = [
@@ -239,6 +269,7 @@ export const SOCIAL_ERRORS: readonly ErrorCode[] = [
   'invite_no_room',
   'unavailable',
   'wrong_password',
+  'bad_recovery',
 ];
 
 export type CloseReason = 'expired' | 'replaced' | 'left' | 'removed';
@@ -271,7 +302,13 @@ export type ServerMessage =
   | { t: 'leaderboard'; rows: LeaderRow[] }
   | { t: 'passwordChanged' }
   /** The server's VAPID public key after login; null when push notifications are off on the server. */
-  | { t: 'pushKey'; key: string | null };
+  | { t: 'pushKey'; key: string | null }
+  /** Accounts I blocked, sent after login and after every change. */
+  | { t: 'blocked'; list: string[] }
+  /** A report was saved. */
+  | { t: 'reported'; username: string }
+  /** A new recovery code, shown once (after signup, recovery, or on request). */
+  | { t: 'recoveryCode'; code: string };
 
 export function encode(msg: ClientMessage | ServerMessage): string {
   return JSON.stringify(msg);
@@ -346,6 +383,7 @@ function settings(v: unknown): Partial<RoomSettings> | null {
 /** Shape only (strings of sane length); the server checks the username and password rules. */
 const isUser = (v: unknown): v is string => isStr(v, 64);
 const isPass = (v: unknown): v is string => typeof v === 'string' && v.length <= MAX_PASSWORD;
+const isReportReason = (v: unknown): v is ReportReason => typeof v === 'string' && (REPORT_REASONS as readonly string[]).includes(v);
 const isEndpoint = (v: unknown): v is string => isStr(v, 2048) && v.startsWith('https://');
 
 function pushSub(v: unknown): PushSub | null {
@@ -381,6 +419,20 @@ function parseObj(m: Obj): ClientMessage | null {
     }
     case 'pushUnsubscribe':
       return isEndpoint(m.endpoint) ? { t: 'pushUnsubscribe', endpoint: m.endpoint } : null;
+    case 'block':
+    case 'unblock':
+      return isUser(m.username) ? { t: m.t, username: m.username } : null;
+    case 'report': {
+      const note = m.note === undefined ? '' : m.note;
+      if (!isUser(m.username) || !isReportReason(m.reason) || typeof note !== 'string' || note.length > MAX_REPORT_NOTE) return null;
+      return { t: 'report', username: m.username, reason: m.reason, note: note.trim() };
+    }
+    case 'recover':
+      return isUser(m.username) && isStr(m.code, 64) && isPass(m.password)
+        ? { t: 'recover', username: m.username, code: m.code, password: m.password }
+        : null;
+    case 'createRecoveryCode':
+      return isPass(m.password) ? { t: 'createRecoveryCode', password: m.password } : null;
     case 'create': {
       const n = name(m.name);
       return n ? { t: 'create', name: n } : null;

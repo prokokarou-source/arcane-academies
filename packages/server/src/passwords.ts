@@ -1,4 +1,5 @@
-import { createHash, randomBytes, scrypt, timingSafeEqual, type ScryptOptions } from 'node:crypto';
+import { createHash, randomBytes, randomInt, scrypt, timingSafeEqual, type ScryptOptions } from 'node:crypto';
+import { RECOVERY_ALPHABET, RECOVERY_GROUPS } from '@arcane/protocol';
 
 const scryptAsync = (password: string, salt: Buffer, keylen: number, opts: ScryptOptions) =>
   new Promise<Buffer>((resolve, reject) => scrypt(password, salt, keylen, opts, (err, key) => (err ? reject(err) : resolve(key))));
@@ -26,6 +27,12 @@ export async function verifyPassword(password: string, stored: string): Promise<
 
 /** A fresh login token for the client to keep. */
 export const newToken = () => randomBytes(32).toString('base64url');
+
+/** A fresh recovery code, e.g. `ABCD-EFGH-JKMN-PQRS` (~79 bits); the store keeps only its scrypt hash. */
+export function newRecoveryCode(): string {
+  const group = () => Array.from({ length: 4 }, () => RECOVERY_ALPHABET[randomInt(RECOVERY_ALPHABET.length)]).join('');
+  return Array.from({ length: RECOVERY_GROUPS }, group).join('-');
+}
 
 /** What the store keeps instead of the token. */
 export const hashToken = (token: string) => createHash('sha256').update(token).digest('hex');

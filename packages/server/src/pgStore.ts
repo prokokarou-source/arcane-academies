@@ -1,6 +1,6 @@
 import pg from 'pg';
 import type { PushSub } from '@arcane/protocol';
-import type { FriendLink, FriendRow, GameRecord, StatTotals, Store, StoredUser, User } from './store';
+import type { FriendLink, FriendRow, GameRecord, Report, StatTotals, Store, StoredUser, User } from './store';
 import { MAX_PUSH_SUBS, NO_STATS, usernameKey } from './store';
 
 /** Run on every start; each statement is safe to repeat. */
@@ -45,6 +45,26 @@ const MIGRATIONS = [
      created_at timestamptz not null default now()
    )`,
   `create index if not exists push_subscriptions_user on push_subscriptions(user_id)`,
+  `alter table users add column if not exists recovery_hash text`,
+  `create table if not exists blocks (
+     blocker bigint not null references users(id) on delete cascade,
+     blocked bigint not null references users(id) on delete cascade,
+     created_at timestamptz not null default now(),
+     primary key (blocker, blocked)
+   )`,
+  `create index if not exists blocks_blocked on blocks(blocked)`,
+  `create table if not exists reports (
+     id bigserial primary key,
+     reporter_id bigint references users(id) on delete set null,
+     reporter text not null,
+     target_id bigint references users(id) on delete set null,
+     target text not null,
+     reason text not null,
+     note text not null default '',
+     room_code text,
+     created_at timestamptz not null default now()
+   )`,
+  `create index if not exists reports_created on reports(created_at desc)`,
 ];
 
 const user = (r: { id: string | number; username: string }): User => ({ id: String(r.id), username: r.username });
@@ -92,9 +112,9 @@ export class PgStore implements Store {
   }
 
   async findUser(username: string): Promise<StoredUser | null> {
-    const r = await this.q('select id, username, pass_hash from users where username_key = $1', [usernameKey(username)]);
+    const r = await this.q('select id, username, pass_hash, recovery_hash from users where username_key = $1', [usernameKey(username)]);
     const row = r.rows[0];
-    return row ? { ...user(row), passHash: row.pass_hash } : null;
+    return row ? { ...user(row), passHash: row.pass_hash, recoveryHash: row.recovery_hash ?? null } : null;
   }
 
   async createSession(tokenHash: string, userId: string): Promise<void> {
@@ -219,5 +239,62 @@ export class PgStore implements Store {
   async removePushSub(endpoint: string, userId?: string): Promise<void> {
     if (userId === undefined) await this.q('delete from push_subscriptions where endpoint = $1', [endpoint]);
     else await this.q('delete from push_subscriptions where endpoint = $1 and user_id = $2', [endpoint, userId]);
+  }
+
+  async setRecoveryHash(userId: string, hash: string | null): Promise<void> {
+    await this.q('update users set recovery_hash = $2 where id = $1', [userId, hash]);
+  }
+
+  async addBlock(blocker: string, blocked: string): Promise<void> {
+    await this.removeLink(blocker, blocked);
+    await this.q(
+      `insert into blocks (blocker, blocked) select $1, $2
+       where exists (select 1 from users where id = $1) and exists (select 1 from users where id = $2)
+       on conflict do nothing`,
+      [blocker, blocked],
+    );
+  }
+
+  async removeBlock(blocker: string, blocked: string): Promise<void> {
+    await this.q('delete from blocks where blocker = $1 and blocked = $2', [blocker, blocked]);
+  }
+
+  async blocks(userId: string): Promise<User[]> {
+    const r = await this.q(
+      'select u.id, u.username from blocks b join users u on u.id = b.blocked where b.blocker = $1 order by b.created_at',
+      [userId],
+    );
+    return r.rows.map(user);
+  }
+
+  async blockedEither(a: string, b: string): Promise<boolean> {
+    const r = await this.q('select 1 from blocks where (blocker = $1 and blocked = $2) or (blocker = $2 and blocked = $1) limit 1', [a, b]);
+    return r.rows.length > 0;
+  }
+
+  async addReport(r: Report): Promise<void> {
+    await this.q(
+      `insert into reports (reporter_id, reporter, target_id, target, reason, note, room_code, created_at)
+       values ($1, $2, $3, $4, $5, $6, $7, to_timestamp($8 / 1000.0))`,
+      [r.reporterId, r.reporter, r.targetId, r.target, r.reason, r.note, r.roomCode, r.at],
+    );
+  }
+
+  async recentReports(limit: number): Promise<Report[]> {
+    const r = await this.q(
+      `select reporter_id, reporter, target_id, target, reason, note, room_code, created_at
+       from reports order by created_at desc, id desc limit $1`,
+      [limit],
+    );
+    return r.rows.map((row) => ({
+      reporterId: row.reporter_id === null ? '' : String(row.reporter_id),
+      reporter: row.reporter,
+      targetId: row.target_id === null ? '' : String(row.target_id),
+      target: row.target,
+      reason: row.reason,
+      note: row.note,
+      roomCode: row.room_code,
+      at: new Date(row.created_at).getTime(),
+    }));
   }
 }

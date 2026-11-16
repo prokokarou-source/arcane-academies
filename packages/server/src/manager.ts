@@ -12,6 +12,8 @@ export interface ManagerOptions extends RoomOptions {
   quickStartMs: number;
   /** Quick match: after this long, start with whoever compatible is waiting and fill the rest with bots. */
   quickFillMs: number;
+  /** Quick match: true when the accounts on these two connections must not play together (one blocked the other). */
+  apart?(a: Conn, b: Conn): boolean;
 }
 
 /** A player in the quick-match queue. */
@@ -174,7 +176,7 @@ export class RoomManager {
       for (const n of [4, 3, 2]) {
         const exact = this.waiting.filter((w) => w.size === n);
         if (n !== ANY_SIZE && exact.length === 0) continue;
-        const group = [...exact, ...this.waiting.filter((w) => w.size === null)].slice(0, n);
+        const group = this.pick([...exact, ...this.waiting.filter((w) => w.size === null)], n);
         if (group.length < n) continue;
         this.seat(group, n);
         found = true;
@@ -192,9 +194,19 @@ export class RoomManager {
       const sizes = old.size === null ? [4, 3, 2] : [old.size];
       // The size most of the others accept (bigger tables win ties).
       const n = sizes.reduce((best, s) => (others.filter((w) => fits(w, s)).length > others.filter((w) => fits(w, best)).length ? s : best));
-      const mates = [...others.filter((w) => w.size === n), ...others.filter((w) => w.size === null)].slice(0, n - 1);
-      if (mates.length > 0) this.seat([old, ...mates], n);
+      const group = this.pick([old, ...others.filter((w) => w.size === n), ...others.filter((w) => w.size === null)], n);
+      if (group.length > 1) this.seat(group, n);
     }
+  }
+
+  /** Up to `n` players in queue order, skipping anyone kept apart from a player already picked. */
+  private pick(candidates: Waiting[], n: number): Waiting[] {
+    const group: Waiting[] = [];
+    for (const w of candidates) {
+      if (group.length >= n) break;
+      if (!group.some((g) => this.opts.apart?.(g.conn, w.conn))) group.push(w);
+    }
+    return group;
   }
 
   /** Open a quick room for these players; its lobby counts down and then starts with bots in the empty seats. */

@@ -526,3 +526,14 @@ button.link.react-btn { font-size: 1.15rem; min-width: 40px; text-decoration: no
   display: grid; place-items: center; width: 72px; height: 72px; border-radius: 50%; font-size: 2rem; color: var(--gold);
   background: rgba(232, 181, 74, 0.1); border: 1px solid rgba(232, 181, 74, 0.45); box-shadow: 0 0 30px rgba(232, 181, 74, 0.2);
 }
+
+/* Block, report and recovery code */
+.pm-btn { min-width: 32px; padding: 0 6px; font-size: 1.2rem; line-height: 1; color: var(--muted); }
+.pm-sheet .row.stretch > button { flex: 1; }
+.pm-report { display: flex; flex-direction: column; gap: var(--s3); }
+.pm-report textarea { resize: vertical; font: inherit; }
+.recovery-code {
+  display: block; text-align: center; font-family: ui-monospace, "Cascadia Mono", Menlo, monospace; font-size: 1.35rem; letter-spacing: 0.08em;
+  padding: 12px 10px; border-radius: 12px; color: var(--gold); background: rgba(232, 181, 74, 0.1); border: 1px dashed rgba(232, 181, 74, 0.55);
+  user-select: all; overflow-wrap: anywhere;
+}

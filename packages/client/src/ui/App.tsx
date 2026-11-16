@@ -97,7 +97,7 @@ export function App({ initialRoom }: { initialRoom?: string }) {
                 className="primary"
                 onClick={() => {
                   setPage('home');
-                  client.acceptInvite(inv, prefs.name.trim() || state.account || inv.code);
+                  client.acceptInvite(inv, state.account ?? (prefs.name.trim() || inv.code));
                 }}
               >
                 {t('join')}

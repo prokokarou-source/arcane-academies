@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { ACADEMIES, type BotLevel } from '@arcane/engine';
 import { MAX_NAME } from '@arcane/protocol';
 import { useSound } from '../audio/context';
@@ -17,20 +17,17 @@ export function Home(props: { initialRoom?: string; onRules(): void; onSettings(
   const [code, setCode] = useState((props.initialRoom ?? '').toUpperCase());
   const [bots, setBots] = useState(3);
   const [level, setLevel] = useState<BotLevel>('normal');
-  // A logged-in player with no name yet plays under their username.
-  useEffect(() => {
-    if (account) setName((n) => n || account);
-  }, [account]);
   const online = friends?.friends.filter((f) => f.online).length ?? 0;
   const requests = friends?.incoming.length ?? 0;
   const install = useInstall();
   const sound = useSound();
 
-  const trimmed = name.trim();
+  // Logged-in players always play under their username; only guests type a name.
+  const trimmed = account ?? name.trim();
   const nameOk = trimmed.length > 0 && trimmed.length <= MAX_NAME;
   const remember = () => {
     sound('tap');
-    if (prefs.name !== trimmed) setPrefs({ ...prefs, name: trimmed });
+    if (!account && prefs.name !== trimmed) setPrefs({ ...prefs, name: trimmed });
   };
 
   return (
@@ -61,10 +58,12 @@ export function Home(props: { initialRoom?: string; onRules(): void; onSettings(
         </button>
       )}
 
-      <label className="field">
-        <span>{t('yourName')}</span>
-        <input aria-label={t('yourName')} value={name} maxLength={MAX_NAME} autoComplete="nickname" onChange={(e) => setName(e.target.value)} />
-      </label>
+      {!account && (
+        <label className="field">
+          <span>{t('yourName')}</span>
+          <input aria-label={t('yourName')} value={name} maxLength={MAX_NAME} autoComplete="nickname" onChange={(e) => setName(e.target.value)} />
+        </label>
+      )}
 
       <section className="panel">
         <button

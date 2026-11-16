@@ -126,6 +126,15 @@ describe('account screens', () => {
     expect(screen.getByRole('alert').textContent).toContain('No player has that username.');
   });
 
+  it('logged-in players have no name field and play under their username', () => {
+    const h = renderApp();
+    expect(screen.getByLabelText('Your name')).toBeTruthy();
+    act(() => h.sock().receive({ t: 'account', username: 'Ana_7' }));
+    expect(screen.queryByLabelText('Your name')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Create game' }));
+    expect(h.sock().sent).toContainEqual({ t: 'create', name: 'Ana_7' });
+  });
+
   it('invites an online friend from the lobby', () => {
     const h = renderApp();
     act(() => {

@@ -48,9 +48,13 @@ function wrap(ws: WebSocket): Conn {
 
 /** Start the HTTP + WebSocket server. `port: 0` picks a free port. */
 export function startServer(opts: ServerOptions): Promise<RunningServer> {
-  const manager = new RoomManager(opts.manager ?? {}, realClock);
   const store = opts.store ?? new MemoryStore();
-  const social = new Social(store, { roomOf: (c) => manager.codeOf(c), clock: realClock });
+  // Rooms ask Social who is logged in on a connection and hand it finished games to record.
+  const manager: RoomManager = new RoomManager(
+    { ...opts.manager, accountOf: (c) => social.userOf(c)?.id ?? null, onResults: (r) => social.recordResults(r) },
+    realClock,
+  );
+  const social: Social = new Social(store, { roomOf: (c) => manager.codeOf(c), clock: realClock });
   const serveStatic = opts.staticDir ? staticHandler(opts.staticDir) : null;
   const http = createServer((req, res) => {
     if (req.method === 'GET' && req.url === '/health') {

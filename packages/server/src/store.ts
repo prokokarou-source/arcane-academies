@@ -27,6 +27,30 @@ export interface FriendRow {
   outgoing: boolean;
 }
 
+/** One finished game, as seen by one account that played it. */
+export interface GameRecord {
+  userId: string;
+  academyId: string;
+  score: number;
+  /** 1 = first; players with equal score and coins share a place. */
+  place: number;
+  /** One of the winners (shared wins count). */
+  won: boolean;
+  /** Seats in the game (humans and bots). */
+  players: number;
+  /** Epoch ms. */
+  playedAt: number;
+}
+
+export interface StatTotals {
+  games: number;
+  wins: number;
+  totalScore: number;
+  bestScore: number;
+}
+
+export const NO_STATS: StatTotals = { games: 0, wins: 0, totalScore: 0, bestScore: 0 };
+
 export interface Store {
   init(): Promise<void>;
   close(): Promise<void>;
@@ -44,6 +68,17 @@ export interface Store {
   /** Remove the link between two users, whichever direction it was. */
   removeLink(a: string, b: string): Promise<void>;
   friendRows(userId: string): Promise<FriendRow[]>;
+  setPassword(userId: string, passHash: string): Promise<void>;
+  /** End every login of a user, except the one kept by `keepTokenHash`. */
+  deleteSessions(userId: string, keepTokenHash?: string): Promise<void>;
+  /** Remove the user with their sessions, friendships and game results. */
+  deleteUser(userId: string): Promise<void>;
+  /** Ignored when the user no longer exists. */
+  recordResult(r: GameRecord): Promise<void>;
+  /** Totals per user id; users with no games get zeros. */
+  totals(userIds: string[]): Promise<Map<string, StatTotals>>;
+  /** Newest first. */
+  history(userId: string, limit: number): Promise<GameRecord[]>;
 }
 
 export const usernameKey = (u: string) => u.toLowerCase();
@@ -53,6 +88,7 @@ export class MemoryStore implements Store {
   private byKey = new Map<string, string>();
   private sessions = new Map<string, string>();
   private links: FriendLink[] = [];
+  private results: GameRecord[] = [];
   private nextId = 1;
 
   async init(): Promise<void> {}
@@ -112,5 +148,50 @@ export class MemoryStore implements Store {
       rows.push({ other: { id: other.id, username: other.username }, accepted: l.accepted, outgoing: l.from === userId });
     }
     return rows;
+  }
+
+  async setPassword(userId: string, passHash: string): Promise<void> {
+    const u = this.users.get(userId);
+    if (u) u.passHash = passHash;
+  }
+
+  async deleteSessions(userId: string, keepTokenHash?: string): Promise<void> {
+    for (const [h, id] of this.sessions) if (id === userId && h !== keepTokenHash) this.sessions.delete(h);
+  }
+
+  async deleteUser(userId: string): Promise<void> {
+    const u = this.users.get(userId);
+    if (!u) return;
+    this.users.delete(userId);
+    this.byKey.delete(usernameKey(u.username));
+    await this.deleteSessions(userId);
+    this.links = this.links.filter((x) => x.from !== userId && x.to !== userId);
+    this.results = this.results.filter((r) => r.userId !== userId);
+  }
+
+  async recordResult(r: GameRecord): Promise<void> {
+    if (this.users.has(r.userId)) this.results.push({ ...r });
+  }
+
+  async totals(userIds: string[]): Promise<Map<string, StatTotals>> {
+    const out = new Map<string, StatTotals>(userIds.map((id) => [id, { ...NO_STATS }]));
+    for (const r of this.results) {
+      const t = out.get(r.userId);
+      if (!t) continue;
+      t.games++;
+      if (r.won) t.wins++;
+      t.totalScore += r.score;
+      t.bestScore = t.games === 1 ? r.score : Math.max(t.bestScore, r.score);
+    }
+    return out;
+  }
+
+  async history(userId: string, limit: number): Promise<GameRecord[]> {
+    return this.results
+      .map((r, i) => ({ r, i }))
+      .filter((x) => x.r.userId === userId)
+      .sort((a, b) => b.r.playedAt - a.r.playedAt || b.i - a.i)
+      .slice(0, limit)
+      .map((x) => ({ ...x.r }));
   }
 }

@@ -4,7 +4,7 @@
  */
 import type { Action, BotLevel, PlayerView } from '@arcane/engine';
 import { SOCIAL_ERRORS, isSocialMessage } from '@arcane/protocol';
-import type { ClientMessage, ErrorCode, FriendList, LobbyState, RoomSettings, SeatId, ServerMessage } from '@arcane/protocol';
+import type { ClientMessage, ErrorCode, FriendList, LeaderRow, LobbyState, Profile, RoomSettings, SeatId, ServerMessage } from '@arcane/protocol';
 import { termDuels } from '../game/derive';
 import { clearAccountToken, clearSession, loadAccountToken, loadSession, saveAccountToken, saveSession, type Session } from './session';
 
@@ -69,6 +69,12 @@ export interface ClientState {
   invites: Invite[];
   /** The last account or friend error, shown on those screens instead of the room banner. */
   socialError: { code: ErrorCode; message: string } | null;
+  /** My stats and last games, as last fetched. */
+  profile: Profile | null;
+  /** Me and my friends ranked, as last fetched. */
+  leaderboard: LeaderRow[] | null;
+  /** Set when the server confirmed a password change. */
+  passwordChanged: boolean;
 }
 
 const OPEN = 1;
@@ -76,6 +82,7 @@ const MIN_BACKOFF = 500;
 const MAX_BACKOFF = 8000;
 const CLOSE_NOTICE: Record<number, Notice> = { 4001: 'replaced', 4002: 'expired' };
 const DEAD_SESSION: ErrorCode[] = ['no_room', 'bad_token', 'not_in_room'];
+const NO_STATS = { profile: null, leaderboard: null, passwordChanged: false } as const;
 
 const INITIAL: ClientState = {
   conn: 'connecting',
@@ -95,6 +102,9 @@ const INITIAL: ClientState = {
   friends: null,
   invites: [],
   socialError: null,
+  profile: null,
+  leaderboard: null,
+  passwordChanged: false,
 };
 
 export class GameClient {
@@ -245,7 +255,7 @@ export class GameClient {
         if (msg.username === null) {
           this.accountToken = null;
           clearAccountToken(this.deps.storage);
-          this.set({ account: null, accountPending: false, friends: null, invites: [], socialError: null });
+          this.set({ account: null, accountPending: false, friends: null, invites: [], socialError: null, ...NO_STATS });
         } else {
           if (msg.token) {
             this.accountToken = msg.token;
@@ -266,6 +276,15 @@ export class GameClient {
         this.set({ friends: { ...list, friends } });
         return;
       }
+      case 'profile':
+        this.set({ profile: msg.profile });
+        return;
+      case 'leaderboard':
+        this.set({ leaderboard: msg.rows });
+        return;
+      case 'passwordChanged':
+        this.set({ passwordChanged: true, accountPending: false, socialError: null });
+        return;
       case 'invite':
         this.set({ invites: [...this.state.invites.filter((i) => i.from !== msg.from), { from: msg.from, code: msg.code }] });
         return;
@@ -446,6 +465,29 @@ export class GameClient {
 
   dismissInvite(invite: Invite): void {
     this.set({ invites: this.state.invites.filter((i) => i !== invite) });
+  }
+
+  requestProfile(): void {
+    this.send({ t: 'profile' });
+  }
+
+  requestLeaderboard(): void {
+    this.send({ t: 'leaderboard' });
+  }
+
+  changePassword(current: string, next: string): void {
+    this.set({ accountPending: true, socialError: null, passwordChanged: false });
+    this.send({ t: 'changePassword', current, next });
+  }
+
+  /** End every login of this account, here included. */
+  logoutAll(): void {
+    this.send({ t: 'logoutAll' });
+  }
+
+  deleteAccount(password: string): void {
+    this.set({ accountPending: true, socialError: null });
+    this.send({ t: 'deleteAccount', password });
   }
 
   clearSocialError(): void {

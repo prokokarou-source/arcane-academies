@@ -1,8 +1,17 @@
-import { MAX_PASSWORD, MIN_PASSWORD, USERNAME_RE, type ErrorCode, type FriendList, type SocialMessage } from '@arcane/protocol';
+import {
+  MAX_PASSWORD,
+  MIN_PASSWORD,
+  PROFILE_HISTORY,
+  USERNAME_RE,
+  type ErrorCode,
+  type FriendList,
+  type LeaderRow,
+  type SocialMessage,
+} from '@arcane/protocol';
 import type { Clock } from './clock';
 import { hashPassword, hashToken, newToken, verifyPassword } from './passwords';
 import type { Conn } from './room';
-import { usernameKey, type Store, type User } from './store';
+import { NO_STATS, usernameKey, type GameRecord, type Store, type User } from './store';
 
 export interface SocialOptions {
   /** The room code this connection is seated in, if any (for invites). */
@@ -28,6 +37,7 @@ const MESSAGES: Partial<Record<ErrorCode, string>> = {
   invite_no_room: 'Join or create a room first',
   busy: 'Still working on your last request',
   unavailable: 'Accounts are unavailable right now',
+  wrong_password: 'Wrong password',
 };
 
 /**
@@ -69,10 +79,16 @@ export class Social {
     switch (msg.t) {
       case 'signup':
       case 'login':
+      case 'changePassword':
+      case 'deleteAccount':
+        // These hash a password: one at a time per connection.
         if (this.busy.has(conn)) return this.fail(conn, 'busy');
         this.busy.add(conn);
         try {
-          return await (msg.t === 'signup' ? this.signup(conn, msg.username, msg.password) : this.login(conn, msg.username, msg.password));
+          if (msg.t === 'signup') return await this.signup(conn, msg.username, msg.password);
+          if (msg.t === 'login') return await this.login(conn, msg.username, msg.password);
+          if (msg.t === 'changePassword') return await this.changePassword(conn, msg.current, msg.next);
+          return await this.deleteAccount(conn, msg.password);
         } finally {
           this.busy.delete(conn);
         }
@@ -99,6 +115,15 @@ export class Social {
     }
     const me = this.userOf(conn);
     if (!me) return this.fail(conn, 'not_logged_in');
+    switch (msg.t) {
+      case 'profile':
+        return this.sendProfile(conn, me);
+      case 'leaderboard':
+        return this.sendLeaderboard(conn, me);
+      case 'logoutAll':
+        await this.store.deleteSessions(me.id);
+        return this.endLogins(me.id);
+    }
     const other = await this.store.findUser(msg.username);
     if (!other || other.id === me.id) return this.fail(conn, 'no_user');
     const link = await this.store.link(me.id, other.id);
@@ -154,6 +179,64 @@ export class Social {
     }
     this.failures.delete(key);
     await this.startSession(conn, { id: stored.id, username: stored.username });
+  }
+
+  /** Check the logged-in user's password, counting failures like logins do. */
+  private async checkPassword(conn: Conn, password: string): Promise<User | null> {
+    const me = this.userOf(conn);
+    if (!me) {
+      this.fail(conn, 'not_logged_in');
+      return null;
+    }
+    const key = usernameKey(me.username);
+    if (this.recentFailures(key) >= MAX_FAILURES) {
+      this.fail(conn, 'too_many_attempts');
+      return null;
+    }
+    const stored = await this.store.findUser(me.username);
+    if (!stored || stored.id !== me.id) {
+      this.fail(conn, 'bad_session');
+      return null;
+    }
+    if (!(await verifyPassword(password, stored.passHash))) {
+      this.failures.set(key, [...(this.failures.get(key) ?? []), this.opts.clock.now()]);
+      this.fail(conn, 'wrong_password');
+      return null;
+    }
+    this.failures.delete(key);
+    return me;
+  }
+
+  /** New password; every other login of the account ends, this one stays. */
+  private async changePassword(conn: Conn, current: string, next: string): Promise<void> {
+    if (!this.userOf(conn)) return this.fail(conn, 'not_logged_in');
+    if (next.length < MIN_PASSWORD || next.length > MAX_PASSWORD) return this.fail(conn, 'bad_password');
+    const me = await this.checkPassword(conn, current);
+    if (!me) return;
+    const keep = this.connUser.get(conn)!.tokenHash;
+    await this.store.setPassword(me.id, await hashPassword(next));
+    await this.store.deleteSessions(me.id, keep);
+    this.endLogins(me.id, keep);
+    conn.send({ t: 'passwordChanged' });
+  }
+
+  /** Remove the account and everything tied to it; friends get their updated lists. */
+  private async deleteAccount(conn: Conn, password: string): Promise<void> {
+    const me = await this.checkPassword(conn, password);
+    if (!me) return;
+    const others = (await this.store.friendRows(me.id)).map((r) => r.other.id);
+    await this.store.deleteUser(me.id);
+    this.endLogins(me.id);
+    await Promise.all(others.map((id) => this.pushFriends(id)));
+  }
+
+  /** Log out every connection of a user (except those on the kept login). */
+  private endLogins(userId: string, keepTokenHash?: string): void {
+    for (const [c, x] of [...this.connUser]) {
+      if (x.user.id !== userId || x.tokenHash === keepTokenHash) continue;
+      this.unbind(c);
+      c.send({ t: 'account', username: null });
+    }
   }
 
   private async startSession(conn: Conn, user: User): Promise<void> {
@@ -237,6 +320,48 @@ export class Social {
         .map((r) => r.other.username)
         .sort(byName);
     return { friends, incoming: pending(false), outgoing: pending(true) };
+  }
+
+  // ---------- stats ----------
+
+  /** Save finished games; a failing database only loses the records, never the game. */
+  recordResults(records: GameRecord[]): Promise<void> {
+    return Promise.all(records.map((r) => this.store.recordResult(r)))
+      .then(() => undefined)
+      .catch((e: Error) => console.error('saving game results failed:', e.message));
+  }
+
+  private async sendProfile(conn: Conn, me: User): Promise<void> {
+    const [totals, recent] = await Promise.all([this.store.totals([me.id]), this.store.history(me.id, PROFILE_HISTORY)]);
+    conn.send({
+      t: 'profile',
+      profile: {
+        username: me.username,
+        ...(totals.get(me.id) ?? NO_STATS),
+        recent: recent.map((r) => ({ at: r.playedAt, academyId: r.academyId, score: r.score, place: r.place, won: r.won, players: r.players })),
+      },
+    });
+  }
+
+  /** Me and my accepted friends, most wins first, then the better win rate. */
+  async leaderboard(me: User): Promise<LeaderRow[]> {
+    const friends = (await this.store.friendRows(me.id)).filter((r) => r.accepted).map((r) => r.other);
+    const people = [me, ...friends];
+    const totals = await this.store.totals(people.map((u) => u.id));
+    const rate = (r: LeaderRow) => (r.games ? r.wins / r.games : 0);
+    return people
+      .map((u) => {
+        const t = totals.get(u.id) ?? NO_STATS;
+        return { username: u.username, games: t.games, wins: t.wins, me: u.id === me.id };
+      })
+      .sort(
+        (a, b) =>
+          b.wins - a.wins || rate(b) - rate(a) || b.games - a.games || a.username.localeCompare(b.username, 'en', { sensitivity: 'base' }),
+      );
+  }
+
+  private async sendLeaderboard(conn: Conn, me: User): Promise<void> {
+    conn.send({ t: 'leaderboard', rows: await this.leaderboard(me) });
   }
 
   private async pushFriends(userId: string): Promise<void> {

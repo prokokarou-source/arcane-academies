@@ -64,6 +64,52 @@ function contract(name: string, make: () => Store) {
       expect(await store.link(cy.id, di.id)).toBeNull();
       expect(await store.friendRows(cy.id)).toEqual([]);
     });
+
+    it('changes passwords and ends all sessions but the kept one', async () => {
+      const ed = (await store.createUser(n('Ed'), 'old'))!;
+      await store.setPassword(ed.id, 'new');
+      expect((await store.findUser(n('Ed')))?.passHash).toBe('new');
+      await store.createSession(`e1-${uniq}`, ed.id);
+      await store.createSession(`e2-${uniq}`, ed.id);
+      await store.deleteSessions(ed.id, `e1-${uniq}`);
+      expect(await store.sessionUser(`e1-${uniq}`)).toEqual(ed);
+      expect(await store.sessionUser(`e2-${uniq}`)).toBeNull();
+      await store.deleteSessions(ed.id);
+      expect(await store.sessionUser(`e1-${uniq}`)).toBeNull();
+    });
+
+    it('records results and sums them, newest first in the history', async () => {
+      const fa = (await store.createUser(n('Fa'), 'h'))!;
+      const gi = (await store.createUser(n('Gi'), 'h'))!;
+      const rec = (score: number, won: boolean, playedAt: number) =>
+        store.recordResult({ userId: fa.id, academyId: 'ember', score, place: won ? 1 : 2, won, players: 3, playedAt });
+      await rec(40, true, 1_000_000);
+      await rec(55, false, 3_000_000);
+      await rec(30, true, 2_000_000);
+      const t = await store.totals([fa.id, gi.id]);
+      expect(t.get(fa.id)).toEqual({ games: 3, wins: 2, totalScore: 125, bestScore: 55 });
+      expect(t.get(gi.id)).toEqual({ games: 0, wins: 0, totalScore: 0, bestScore: 0 });
+      const h = await store.history(fa.id, 2);
+      expect(h.map((r) => r.score)).toEqual([55, 30]);
+      expect(h[0]).toEqual({ userId: fa.id, academyId: 'ember', score: 55, place: 2, won: false, players: 3, playedAt: 3_000_000 });
+    });
+
+    it('deletes a user with sessions, friendships and results; results for gone users are ignored', async () => {
+      const ho = (await store.createUser(n('Ho'), 'h'))!;
+      const iv = (await store.createUser(n('Iv'), 'h'))!;
+      await store.createSession(`h-${uniq}`, ho.id);
+      await store.addRequest(ho.id, iv.id);
+      await store.recordResult({ userId: ho.id, academyId: 'ember', score: 9, place: 1, won: true, players: 2, playedAt: 1 });
+      await store.deleteUser(ho.id);
+      expect(await store.findUser(n('Ho'))).toBeNull();
+      expect(await store.sessionUser(`h-${uniq}`)).toBeNull();
+      expect(await store.friendRows(iv.id)).toEqual([]);
+      expect(await store.history(ho.id, 10)).toEqual([]);
+      await store.recordResult({ userId: ho.id, academyId: 'ember', score: 9, place: 1, won: true, players: 2, playedAt: 2 });
+      expect((await store.totals([ho.id])).get(ho.id)?.games).toBe(0);
+      // The name is free again.
+      expect(await store.createUser(n('Ho'), 'h')).not.toBeNull();
+    });
   });
 }
 

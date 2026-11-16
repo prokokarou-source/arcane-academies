@@ -27,6 +27,7 @@ import {
   type ServerMessage,
 } from '@arcane/protocol';
 import type { Clock } from './clock';
+import type { GameRecord } from './store';
 
 /** One client connection, whatever the transport. */
 export interface Conn {
@@ -40,6 +41,10 @@ export interface RoomOptions {
   /** Server-side defaults. May go outside the host's limits (useful for tests and local play). */
   defaultSettings?: Partial<RoomSettings>;
   seed?: () => number;
+  /** The account (user id) logged in on this connection, if any. Its seat's result is recorded. */
+  accountOf?(conn: Conn): string | null;
+  /** Called once per finished game with one record per account seated in it. */
+  onResults?(records: GameRecord[]): void;
 }
 
 export const MAX_SEATS = 7;
@@ -61,6 +66,8 @@ interface Member {
   /** Left the game on purpose (not just disconnected); a bot keeps playing the seat. */
   left?: boolean;
   engineSeat: number;
+  /** Humans only: the account playing this seat, if logged in. */
+  accountId?: string;
 }
 
 /**
@@ -83,6 +90,8 @@ export class Room {
   private timerSeq = -1;
   private turnTimer: unknown = null;
   private deadline: number | null = null;
+  /** The current game's results were handed to onResults. */
+  private recorded = false;
 
   constructor(
     readonly code: string,
@@ -115,6 +124,8 @@ export class Room {
       botControlled: false,
       engineSeat: -1,
     };
+    const account = this.opts.accountOf?.(conn);
+    if (account) m.accountId = account;
     this.members.push(m);
     this.hostId ??= m.id;
     this.bind(m, conn);
@@ -134,6 +145,9 @@ export class Room {
     this.clearGrace(m);
     m.botControlled = false;
     m.left = false;
+    // A login that finished after the seat was taken still counts.
+    const account = this.opts.accountOf?.(conn);
+    if (account && !m.accountId) m.accountId = account;
     this.bind(m, conn);
     conn.send({ t: 'joined', code: this.code, seatId: m.id, token: m.token! });
     this.broadcast();
@@ -316,6 +330,7 @@ export class Room {
     // With 2 seats the engine inserts the Rival Archmage at engine seat 1.
     this.members.forEach((m, i) => (m.engineSeat = n === 2 ? [0, 2][i] : i));
     this.phase = 'game';
+    this.recorded = false;
     this.turnSeq = 0;
     this.timerSeq = -1;
     this.advance();
@@ -380,8 +395,38 @@ export class Room {
       this.turnSeq++;
     }
     this.state = s;
+    if (s.phase === 'ended' && !this.recorded) this.record(s);
     this.armTurnTimer();
     this.broadcast();
+  }
+
+  /** One result per account in the game (an account in two seats counts once). */
+  private record(s: GameState): void {
+    this.recorded = true;
+    if (!this.opts.onResults) return;
+    const scores = finalScores(s);
+    const rivals = scores.filter((b) => s.players[b.seat].config.kind !== 'archmage');
+    const won = new Set(winners(s));
+    const coins = (seat: number) => s.players[seat].coins;
+    const seen = new Set<string>();
+    const records: GameRecord[] = [];
+    for (const m of this.members) {
+      if (m.kind !== 'human' || !m.accountId || seen.has(m.accountId)) continue;
+      seen.add(m.accountId);
+      const mine = scores.find((b) => b.seat === m.engineSeat);
+      if (!mine) continue;
+      const ahead = rivals.filter((b) => b.total > mine.total || (b.total === mine.total && coins(b.seat) > coins(mine.seat)));
+      records.push({
+        userId: m.accountId,
+        academyId: s.players[m.engineSeat].academyId,
+        score: mine.total,
+        place: 1 + ahead.length,
+        won: won.has(m.engineSeat),
+        players: this.members.length,
+        playedAt: this.clock.now(),
+      });
+    }
+    if (records.length) this.opts.onResults(records);
   }
 
   private armTurnTimer(): void {

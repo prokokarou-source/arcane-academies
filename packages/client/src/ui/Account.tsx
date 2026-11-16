@@ -3,7 +3,7 @@ import { MAX_PASSWORD, MIN_PASSWORD, USERNAME_RE } from '@arcane/protocol';
 import { useClient, useClientState, useT } from './context';
 
 /** Log in or create an account (username + password). Optional: guests can always play. */
-export function Account(props: { onBack(): void; onFriends(): void }) {
+export function Account(props: { onBack(): void; onFriends(): void; onProfile(): void }) {
   const client = useClient();
   const t = useT();
   const { account, accountPending, socialError } = useClientState();
@@ -16,10 +16,12 @@ export function Account(props: { onBack(): void; onFriends(): void }) {
       <main className="screen">
         <h2>{t('account')}</h2>
         <p>{t('signedInAs', { name: account })}</p>
-        <button className="primary" onClick={props.onFriends}>
-          {t('friends')}
+        <button className="primary" onClick={props.onProfile}>
+          {t('profile')}
         </button>
+        <button onClick={props.onFriends}>{t('friends')}</button>
         <button onClick={() => client.logout()}>{t('logOut')}</button>
+        <ManageAccount />
         <button className="link" onClick={props.onBack}>
           {t('back')}
         </button>
@@ -93,5 +95,107 @@ export function Account(props: { onBack(): void; onFriends(): void }) {
         {t('back')}
       </button>
     </main>
+  );
+}
+
+/** Change password, log out everywhere, delete the account. */
+function ManageAccount() {
+  const client = useClient();
+  const t = useT();
+  const { accountPending, socialError, passwordChanged } = useClientState();
+  const [current, setCurrent] = useState('');
+  const [next, setNext] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const canChange = current.length > 0 && next.length >= MIN_PASSWORD && !accountPending;
+
+  return (
+    <section className="panel">
+      <h3>{t('manageAccount')}</h3>
+      {socialError && (
+        <div className="banner banner-error" role="alert">
+          <span>{t(`error_${socialError.code}`)}</span>
+        </div>
+      )}
+      <form
+        className="panel"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!canChange) return;
+          client.changePassword(current, next);
+          setCurrent('');
+          setNext('');
+        }}
+      >
+        <label className="field">
+          <span>{t('currentPassword')}</span>
+          <input
+            aria-label={t('currentPassword')}
+            type="password"
+            value={current}
+            maxLength={MAX_PASSWORD}
+            autoComplete="current-password"
+            onChange={(e) => setCurrent(e.target.value)}
+          />
+        </label>
+        <label className="field">
+          <span>{t('newPassword')}</span>
+          <input
+            aria-label={t('newPassword')}
+            type="password"
+            value={next}
+            maxLength={MAX_PASSWORD}
+            autoComplete="new-password"
+            onChange={(e) => setNext(e.target.value)}
+          />
+          <span className="small">{t('passwordHint')}</span>
+        </label>
+        {passwordChanged && (
+          <p className="small" role="status">
+            {t('passwordChanged')}
+          </p>
+        )}
+        <button type="submit" disabled={!canChange}>
+          {t('changePassword')}
+        </button>
+      </form>
+      <button onClick={() => client.logoutAll()}>{t('logOutAll')}</button>
+      {!deleting ? (
+        <button className="link danger" onClick={() => setDeleting(true)}>
+          {t('deleteAccount')}
+        </button>
+      ) : (
+        <form
+          className="panel"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!deletePassword || accountPending) return;
+            client.deleteAccount(deletePassword);
+            setDeletePassword('');
+          }}
+        >
+          <p className="small">{t('deleteWarning')}</p>
+          <label className="field">
+            <span>{t('password')}</span>
+            <input
+              aria-label={t('password')}
+              type="password"
+              value={deletePassword}
+              maxLength={MAX_PASSWORD}
+              autoComplete="current-password"
+              onChange={(e) => setDeletePassword(e.target.value)}
+            />
+          </label>
+          <div className="row">
+            <button className="danger" type="submit" disabled={!deletePassword || accountPending}>
+              {t('deleteForever')}
+            </button>
+            <button type="button" className="link" onClick={() => setDeleting(false)}>
+              {t('cancel')}
+            </button>
+          </div>
+        </form>
+      )}
+    </section>
   );
 }

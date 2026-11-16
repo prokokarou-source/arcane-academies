@@ -6,10 +6,11 @@ import { Friends } from './Friends';
 import { Game } from './Game';
 import { Home } from './Home';
 import { Lobby } from './Lobby';
+import { Profile } from './Profile';
 import { Rules } from './Rules';
 import { Settings } from './Settings';
 
-type Page = 'home' | 'rules' | 'settings' | 'account' | 'friends';
+type Page = 'home' | 'rules' | 'settings' | 'account' | 'friends' | 'profile';
 
 export function App({ initialRoom }: { initialRoom?: string }) {
   const state = useClientState();
@@ -32,7 +33,8 @@ export function App({ initialRoom }: { initialRoom?: string }) {
   if (page === 'settings') screen = <Settings onBack={() => setPage('home')} />;
   else if (page === 'rules' && (state.game || (!state.lobby && !state.restoring))) screen = <Rules onBack={() => setPage('home')} />;
   else if (page === 'account' && !state.game && !state.lobby)
-    screen = <Account onBack={() => setPage('home')} onFriends={() => setPage('friends')} />;
+    screen = <Account onBack={() => setPage('home')} onFriends={() => setPage('friends')} onProfile={() => setPage('profile')} />;
+  else if (page === 'profile' && !state.game && !state.lobby && state.account) screen = <Profile onBack={() => setPage('account')} />;
   else if (page === 'friends' && !state.game) screen = <Friends onBack={() => setPage('home')} onAccount={() => setPage('account')} />;
   else if (state.game) screen = <Game onSettings={() => setPage('settings')} onRules={() => setPage('rules')} />;
   else if (state.lobby) screen = <Lobby onFriends={state.account ? () => setPage('friends') : undefined} />;

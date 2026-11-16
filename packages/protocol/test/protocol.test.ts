@@ -102,3 +102,28 @@ describe('account messages', () => {
     expect(parseClientMessage(JSON.stringify({ t: 'auth' }))).toBeNull();
   });
 });
+
+describe('stats and account management messages', () => {
+  it('round-trip and are recognised as social', async () => {
+    const { isSocialMessage } = await import('../src/index');
+    const msgs: ClientMessage[] = [
+      { t: 'profile' },
+      { t: 'leaderboard' },
+      { t: 'changePassword', current: 'secret1', next: 'secret2' },
+      { t: 'logoutAll' },
+      { t: 'deleteAccount', password: 'secret1' },
+    ];
+    for (const m of msgs) {
+      expect(parseClientMessage(encode(m))).toEqual(m);
+      expect(isSocialMessage(m)).toBe(true);
+    }
+  });
+
+  it('drops unknown fields and rejects malformed ones', () => {
+    expect(parseClientMessage(JSON.stringify({ t: 'profile', username: 'Bob' }))).toEqual({ t: 'profile' });
+    expect(parseClientMessage(JSON.stringify({ t: 'changePassword', current: 'secret1' }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ t: 'changePassword', current: 'a', next: 'x'.repeat(129) }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ t: 'deleteAccount' }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ t: 'deleteAccount', password: 12 }))).toBeNull();
+  });
+});

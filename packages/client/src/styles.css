@@ -303,3 +303,7 @@ select option { background: var(--night-2); color: var(--text); }
 }
 .panel.row { flex-direction: row; }
 .invite { color: var(--text); word-break: break-all; }
+
+/* friends leaderboard */
+.seat-top .rank { min-width: 1.4em; font-weight: 700; color: var(--gold); }
+.seat.lb-me { border-color: var(--gold); }

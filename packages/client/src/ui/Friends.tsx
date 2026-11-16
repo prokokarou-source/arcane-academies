@@ -50,7 +50,6 @@ export function Friends(props: { onBack(): void; onAccount(): void }) {
         <Leaderboard />
       ) : (
         <>
-
           <form
             className="panel row"
             onSubmit={(e) => {
@@ -120,7 +119,11 @@ export function Friends(props: { onBack(): void; onAccount(): void }) {
                       {invited.has(f.username) ? t('invited') : t('invite')}
                     </button>
                   )}
-                  <button className="link danger" aria-label={t('unfriend', { name: f.username })} onClick={() => client.removeFriend(f.username)}>
+                  <button
+                    className="link danger"
+                    aria-label={t('unfriend', { name: f.username })}
+                    onClick={() => client.removeFriend(f.username)}
+                  >
                     ✕
                   </button>
                 </div>
@@ -162,12 +165,12 @@ function Leaderboard() {
   return (
     <ol className="seats" aria-label={t('leaderboard')}>
       {leaderboard.map((r, i) => (
-        <li key={r.username} className={`seat${r.me ? ' me-row' : ''}`}>
+        <li key={r.username} className={`seat${r.me ? ' lb-me' : ''}`}>
           <div className="seat-top">
             <span className="rank">{i + 1}</span>
             <span className="name">{r.me ? `${r.username} (${t('you')})` : r.username}</span>
             <span className="small">{`${t('statWins')}: ${r.wins}`}</span>
-            <span className="muted small">{`${winRate(r)}% · ${r.games} ${t('statGames').toLowerCase()}`}</span>
+            <span className="muted small">{`${winRate(r)}% · ${t('statGames')}: ${r.games}`}</span>
           </div>
         </li>
       ))}

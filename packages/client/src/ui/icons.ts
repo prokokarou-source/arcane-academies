@@ -51,5 +51,9 @@ export function effectLabel(e: Effect): string {
       return `${e.per}${COIN}/${TARGET_ICON[e.what]}`;
     case 'renownPer':
       return `${e.per}${RENOWN}/${TARGET_ICON[e.what]}${e.scope === 'self' ? '' : e.scope === 'neighbors' ? ' ◀▶' : ' ◀●▶'}`;
+    case 'researchAny':
+      return Object.values(DISCIPLINE_ICON).join('/');
+    case 'buildDiscard':
+      return '♻';
   }
 }

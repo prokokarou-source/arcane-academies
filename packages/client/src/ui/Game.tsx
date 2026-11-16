@@ -38,7 +38,7 @@ export function Game({ onSettings, onRules }: { onSettings(): void; onRules(): v
 
   let status: string;
   if (view.phase === 'ended') status = '';
-  else if (canAct && !acting) status = view.phase === 'bonus' ? t('bonusTurn') : t('pickCard');
+  else if (canAct && !acting) status = view.phase === 'bonus' ? t('bonusTurn') : view.phase === 'discard' ? t('discardTurn') : t('pickCard');
   else {
     const names = waitingFor(view, seats);
     status = names === null ? t('waitingBonus') : names.length ? t('waitingFor', { names: names.join(', ') }) : t('waitingOthers');
@@ -138,11 +138,6 @@ export function Game({ onSettings, onRules }: { onSettings(): void; onRules(): v
           <button disabled={!current?.sell || acting} onClick={() => current?.sell && (sound('sell'), client.act(current.sell))}>
             {t('sell')}
           </button>
-          {current?.keep && (
-            <button disabled={acting} onClick={() => current.keep && (sound('build'), client.act(current.keep))}>
-              {t('keep')}
-            </button>
-          )}
         </div>
       )}
 

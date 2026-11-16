@@ -77,13 +77,26 @@ describe('Game screen', () => {
     const view = { ...g.view, phase: 'bonus' as const, players: g.view.players.map((p, i) => (i === 0 ? { ...p, hand: [], kept } : p)) };
     inGame({ ...g, view, legal: [{ type: 'sell', cardUid: kept.uid }] });
     expect(screen.getAllByTestId('card')).toHaveLength(1);
-    expect(screen.getByText('Bonus turn: play your kept card.')).toBeTruthy();
+    expect(screen.getByText('Bonus turn: play your last card of this Term.')).toBeTruthy();
   });
 
   it('bonus phase without a kept card just waits', () => {
     const g = gameMsg(s, 1);
     inGame({ ...g, view: { ...g.view, phase: 'bonus' }, legal: [] });
-    expect(screen.getByText('Waiting for the bonus turn…')).toBeTruthy();
+    expect(screen.getByText('Waiting for a bonus turn…')).toBeTruthy();
+  });
+
+  it('discard phase offers the discarded cards I may build for free', () => {
+    const g = gameMsg(s, 0);
+    const card = g.view.players[0].hand![0];
+    const free = { buyLeft: {}, buyRight: {}, coinsToLeft: 0, coinsToRight: 0, coinsToBank: 0, free: true };
+    const view = { ...g.view, phase: 'discard' as const, archive: [card, { uid: 'other#9', defId: card.defId }] };
+    const h = inGame({ ...g, view, legal: [{ type: 'build', cardUid: card.uid, payment: free }] });
+    expect(screen.getAllByTestId('card')).toHaveLength(1);
+    expect(screen.getByText('Pick a discarded card to build for free.')).toBeTruthy();
+    fireEvent.click(screen.getAllByTestId('card')[0]);
+    fireEvent.click(screen.getByRole('button', { name: /^Build/ }));
+    expect(h.sock().sent.at(-1)).toEqual({ t: 'act', action: { type: 'build', cardUid: card.uid, payment: free } });
   });
 
   it('tapping a neighbor opens their panel', () => {
@@ -99,7 +112,7 @@ describe('Game screen', () => {
   it('shows the next tower level cost in my area', () => {
     inGame(gameMsg(s, 0));
     const row = screen.getByText('Next level:').closest('.glyphs') as HTMLElement;
-    expect(within(row).getAllByRole('img', { name: 'Moonstone' })).toHaveLength(2);
+    expect(within(row).getAllByRole('img', { name: 'Herbs' })).toHaveLength(2);
   });
 
   it('my panel lists all three tower levels with cost and reward', () => {
@@ -110,12 +123,10 @@ describe('Game screen', () => {
     expect(within(dialog).getByText('Level 2')).toBeTruthy();
     expect(within(dialog).getByText('Level 3')).toBeTruthy();
     const levels = dialog.querySelectorAll('.levels li');
-    expect(within(levels[0] as HTMLElement).getAllByRole('img', { name: 'Moonstone' })).toHaveLength(2);
-    expect(within(levels[1] as HTMLElement).getAllByRole('img', { name: 'Herbs' })).toHaveLength(2);
-    expect(within(levels[1] as HTMLElement).getAllByRole('img', { name: 'Essence' })).toHaveLength(1);
+    expect(within(levels[0] as HTMLElement).getAllByRole('img', { name: 'Herbs' })).toHaveLength(2);
+    expect(within(levels[1] as HTMLElement).getAllByRole('img', { name: 'Ink' })).toHaveLength(3);
     expect(levels[0].textContent).toContain('+3');
     expect(levels[2].textContent).toContain('+7');
-    expect(within(dialog).getByText('Each duel you win gives +1 extra Renown.')).toBeTruthy();
   });
 
   it('the info button explains a card without selecting it', () => {
@@ -136,8 +147,8 @@ describe('Game screen', () => {
     let found: { g: GameMsg; uid: string } | null = null;
     for (let seed = 1; seed < 200 && !found; seed++) {
       let st = makeGame(['Ana', 'Bob', 'Cleo'], seed);
-      // Seat 0 (Pyromancy, tower level 1 = 2 Moonstone) owns two Moonstone cards and has no coins.
-      const moonCard = CARDS.find((c) => c.family === 'basic' && c.effects.some((e) => e.kind === 'produce' && e.options.length === 1 && e.options[0] === 'moonstone'))!;
+      // Seat 0 (Pyromancy, tower level 1 = 2 Herbs) owns two Herbs cards and has no coins.
+      const moonCard = CARDS.find((c) => c.family === 'basic' && c.effects.some((e) => e.kind === 'produce' && e.options.length === 1 && e.options[0] === 'herbs'))!;
       st = { ...st, players: st.players.map((p, i) => (i === 0 ? { ...p, coins: 0, built: [{ uid: 'x-m1', defId: moonCard.id }, { uid: 'x-m2', defId: moonCard.id }] } : p)) };
       for (const seat of [0]) {
         const g = gameMsg(st, seat);

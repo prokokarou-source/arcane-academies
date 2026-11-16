@@ -58,7 +58,7 @@ describe('room game loop', () => {
     expect(a.last('game')!.view.turn).toBe(2);
   });
 
-  it('plays a full 3-human game (with the Chronomancy bonus phase) and never leaks hidden cards', () => {
+  it('plays a full 3-human game (with the Verdant last-card bonus and the Chronomancy discard phase) and never leaks hidden cards', () => {
     let room!: Room;
     const phases = new Set<string>();
     const setup = lobbyWith(['Ana', 'Bob', 'Cy'], {}, (m) => {
@@ -67,13 +67,14 @@ describe('room game loop', () => {
     });
     room = setup.room;
     const [a] = setup.conns;
-    room.handle(a, { t: 'setSeat', academyId: 'chronomancy' });
+    room.handle(a, { t: 'setSeat', academyId: 'verdant', side: 'B' });
+    room.handle(setup.conns[1], { t: 'setSeat', academyId: 'chronomancy', side: 'B' });
     room.handle(a, { t: 'start' });
-    const prefer = (legal: Action[]) =>
-      legal.find((x) => x.type === 'chronoKeep') ?? legal.find((x) => x.type === 'tower') ?? legal[0];
+    const prefer = (legal: Action[]) => legal.find((x) => x.type === 'tower') ?? legal[0];
     playToEnd(room, setup.conns, prefer);
     expect(room.state!.phase).toBe('ended');
     expect(phases.has('bonus')).toBe(true);
+    expect(phases.has('discard')).toBe(true);
     const result = a.last('game')!.result!;
     expect(result.scores).toHaveLength(3);
     for (const c of setup.conns) expect(c.last('game')!.result).toEqual(result);

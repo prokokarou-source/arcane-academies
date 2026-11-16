@@ -36,3 +36,7 @@ export function withHand(s: GameState, seat: number, defIds: string[]): GameStat
 export function withTower(s: GameState, seat: number, stages: number): GameState {
   return { ...s, players: s.players.map((p) => (p.seat === seat ? { ...p, towerStages: stages } : p)) };
 }
+
+export function asAcademy(s: GameState, seat: number, academyId: string, side: 'A' | 'B'): GameState {
+  return { ...s, players: s.players.map((p) => (p.seat === seat ? { ...p, academyId, side } : p)) };
+}

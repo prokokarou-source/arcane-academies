@@ -50,6 +50,10 @@ function effectText(t: T, e: Effect): string {
       return t('eff_coinsPer', { n: e.per, what: t(`what_${e.what}`), scope: t(`scope_${e.scope}`) });
     case 'renownPer':
       return t('eff_renownPer', { n: e.per, what: t(`what_${e.what}`), scope: t(`scope_${e.scope}`) });
+    case 'researchAny':
+      return t('eff_researchAny');
+    case 'buildDiscard':
+      return t('eff_buildDiscard');
   }
 }
 

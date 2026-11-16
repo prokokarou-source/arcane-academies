@@ -226,7 +226,6 @@ function action(v: unknown): Action | null {
   const cardUid = v.cardUid;
   switch (v.type) {
     case 'sell':
-    case 'chronoKeep':
       return { type: v.type, cardUid };
     case 'build':
     case 'tower': {

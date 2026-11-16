@@ -1,6 +1,5 @@
 import type { GameState, Term } from './types';
 import { effectsOf, leftOf, rightOf } from './payment';
-import { hasPower } from './powers';
 
 const WIN: Record<Term, number> = { 1: 1, 2: 3, 3: 5 };
 
@@ -16,7 +15,7 @@ export function resolveDuels(s: GameState, term: Term): GameState {
   for (const p of s.players) {
     const neighbors = [...new Set([leftOf(s, p.seat), rightOf(s, p.seat)])];
     for (const n of neighbors) {
-      if (power[p.seat] > power[n]) tokens[p.seat].push(WIN[term] + (hasPower(s, p.seat, 'pyroDuelBonus') ? 1 : 0));
+      if (power[p.seat] > power[n]) tokens[p.seat].push(WIN[term]);
       else if (power[p.seat] < power[n]) tokens[p.seat].push(-1);
     }
   }

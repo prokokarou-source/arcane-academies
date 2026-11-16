@@ -1,6 +1,6 @@
 import { academyDef, cardDef, type PublicPlayer } from '@arcane/engine';
 import type { SeatStatus } from '@arcane/protocol';
-import { duelPowerOf, productionOf, researchOf, towerOf, towerStagesOf } from '../game/derive';
+import { duelPowerOf, productionOf, researchOf, researchWildOf, towerOf, towerStagesOf } from '../game/derive';
 import { useT } from './context';
 import { CostView, EffectsView, EffectView, ResearchView } from './Glyphs';
 import { academyArt, Crest } from './Icon';
@@ -33,6 +33,7 @@ export function PlayerPanel(props: { player: PublicPlayer; status?: SeatStatus; 
           <dt>{t('research')}</dt>
           <dd>
             <ResearchView counts={research} />
+            {researchWildOf(p) > 0 && <span className="num muted">{` +${researchWildOf(p)} ?`}</span>}
           </dd>
           <dt>{t('production')}</dt>
           <dd className="effects-row">

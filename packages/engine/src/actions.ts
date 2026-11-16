@@ -1,8 +1,8 @@
-import type { Action, Card, CountTarget, GameState, PaymentPlan, PlayerState, Term } from './types';
+import type { Action, Card, CardDef, CountTarget, GameState, PaymentPlan, PlayerState, Term } from './types';
 import { cardDef } from './data/cards';
 import { academyDef } from './data/academies';
 import { leftOf, planPayment, rightOf, validatePayment } from './payment';
-import { applyPowerOnBuild, hasPower } from './powers';
+import { hasPower } from './powers';
 import { resolveDuels } from './duels';
 import { dealTerm } from './setup';
 
@@ -13,40 +13,64 @@ export class IllegalActionError extends Error {
   }
 }
 
+const FREE: PaymentPlan = { buyLeft: {}, buyRight: {}, coinsToLeft: 0, coinsToRight: 0, coinsToBank: 0, free: true };
+
 /** Seats that must act in the current phase. */
 export function actingSeats(s: GameState): number[] {
   if (s.phase === 'ended') return [];
   if (s.phase === 'bonus') return s.players.filter((p) => s.kept[p.seat]).map((p) => p.seat);
+  if (s.phase === 'discard') return s.players.filter((p) => (s.discardPicks?.[p.seat] ?? 0) > 0).map((p) => p.seat);
   return s.players.map((p) => p.seat);
 }
 
-function cardsInPlay(s: GameState, seat: number): Card[] {
+const owns = (p: PlayerState, name: string) => p.built.some((c) => cardDef(c.defId).name === name);
+
+/** Discarded cards a seat may build for free (not one it already owns by name). */
+export function discardChoices(s: GameState, seat: number): Card[] {
+  const p = s.players[seat];
+  return s.archive.filter((c) => !owns(p, cardDef(c.defId).name));
+}
+
+/** Cards a seat chooses from right now: its hand, its kept last card (bonus) or the discard pile (discard). */
+export function cardsInPlay(s: GameState, seat: number): Card[] {
   if (s.phase === 'bonus') return s.kept[seat] ? [s.kept[seat]!] : [];
+  if (s.phase === 'discard') return discardChoices(s, seat);
   return s.players[seat].hand;
 }
 
-/** Every legal action for a seat right now (build / tower / sell / chronoKeep), with payment plans. */
+/** True when an academy power lets this seat build the card for free right now. */
+export function freeBuild(s: GameState, seat: number, def: CardDef): boolean {
+  if (s.phase !== 'picking' && s.phase !== 'bonus') return false;
+  const p = s.players[seat];
+  if (hasPower(s, seat, 'freeNewFamily') && !p.built.some((c) => cardDef(c.defId).family === def.family)) return true;
+  if (s.phase === 'picking' && s.turn === 1 && hasPower(s, seat, 'freeFirstTurn')) return true;
+  if (s.phase === 'picking' && s.turn === 6 && hasPower(s, seat, 'freeSixthTurn')) return true;
+  return false;
+}
+
+/** Every legal action for a seat right now (build / tower / sell), with payment plans. */
 export function legalActions(s: GameState, seat: number): Action[] {
   if (!actingSeats(s).includes(seat)) return [];
+  if (s.phase === 'discard') return discardChoices(s, seat).map((c) => ({ type: 'build', cardUid: c.uid, payment: FREE }));
   const p = s.players[seat];
-  const owned = new Set(p.built.map((c) => cardDef(c.defId).name));
   const stages = academyDef(p.academyId).sides[p.side];
   const nextStage = stages[p.towerStages];
   const towerPlan = nextStage ? planPayment(s, seat, nextStage.cost) : null;
-  const canKeep = s.phase === 'picking' && s.term < 3 && !p.flags.chronoUsed && hasPower(s, seat, 'chronoKeep');
   const out: Action[] = [];
   for (const c of cardsInPlay(s, seat)) {
     const def = cardDef(c.defId);
-    if (!owned.has(def.name)) {
-      const plan = planPayment(s, seat, def.cost, def.chainFrom);
+    if (!owns(p, def.name)) {
+      const plan = freeBuild(s, seat, def) ? FREE : planPayment(s, seat, def.cost, def.chainFrom);
       if (plan) out.push({ type: 'build', cardUid: c.uid, payment: plan });
     }
     if (towerPlan) out.push({ type: 'tower', cardUid: c.uid, payment: towerPlan });
     out.push({ type: 'sell', cardUid: c.uid });
-    if (canKeep) out.push({ type: 'chronoKeep', cardUid: c.uid });
   }
   return out;
 }
+
+const isFree = (pl: PaymentPlan) =>
+  pl.free && pl.coinsToBank === 0 && pl.coinsToLeft === 0 && pl.coinsToRight === 0 && !Object.keys(pl.buyLeft).length && !Object.keys(pl.buyRight).length;
 
 /**
  * Lock in the pick of a seat for this turn. The action type and card must be offered by legalActions;
@@ -59,8 +83,12 @@ export function submitAction(s: GameState, seat: number, action: Action): GameSt
     const p = s.players[seat];
     const card = cardsInPlay(s, seat).find((c) => c.uid === action.cardUid)!;
     const def = cardDef(card.defId);
-    const cost = action.type === 'build' ? def.cost : academyDef(p.academyId).sides[p.side][p.towerStages].cost;
-    ok = validatePayment(s, seat, cost, action.type === 'build' ? def.chainFrom : undefined, action.payment);
+    if (action.type === 'build' && (s.phase === 'discard' || freeBuild(s, seat, def)) && isFree(action.payment)) ok = true;
+    else if (s.phase === 'discard') ok = false;
+    else {
+      const cost = action.type === 'build' ? def.cost : academyDef(p.academyId).sides[p.side][p.towerStages].cost;
+      ok = validatePayment(s, seat, cost, action.type === 'build' ? def.chainFrom : undefined, action.payment);
+    }
   }
   if (!ok) {
     throw new IllegalActionError(`Seat ${seat} cannot ${action.type} ${action.cardUid}`);
@@ -89,42 +117,46 @@ const paid = (pl: PaymentPlan) => pl.coinsToBank + pl.coinsToLeft + pl.coinsToRi
 /** Resolve the current turn once every acting seat has submitted. */
 export function resolveTurn(s: GameState): GameState {
   if (!allSubmitted(s)) throw new IllegalActionError('Not every seat has submitted');
-  const bonus = s.phase === 'bonus';
+  const phase = s.phase;
   const before = s;
   const coins = s.players.map((p) => p.coins);
   const players: PlayerState[] = s.players.map((p) => ({ ...p, hand: [...p.hand], built: [...p.built], towerCards: [...p.towerCards], flags: { ...p.flags } }));
   const kept = [...s.kept];
-  const archive = [...s.archive];
+  let archive = [...s.archive];
   const log = [...s.log];
-  const builtNow: { seat: number; card: Card; free: boolean }[] = [];
+  const picks = s.players.map((p) => s.discardPicks?.[p.seat] ?? 0);
+  const builtNow: { seat: number; card: Card }[] = [];
   const stagesNow: number[] = [];
 
   for (const seat of actingSeats(s)) {
     const p = players[seat];
     const a = p.pending!;
-    const card = bonus ? kept[seat]! : p.hand.find((c) => c.uid === a.cardUid)!;
-    if (bonus) kept[seat] = null;
-    else p.hand = p.hand.filter((c) => c.uid !== a.cardUid);
+    let card: Card;
+    if (phase === 'bonus') {
+      card = kept[seat]!;
+      kept[seat] = null;
+    } else if (phase === 'discard') {
+      card = archive.find((c) => c.uid === a.cardUid)!;
+      archive = archive.filter((c) => c.uid !== a.cardUid);
+      picks[seat] -= 1;
+    } else {
+      card = p.hand.find((c) => c.uid === a.cardUid)!;
+      p.hand = p.hand.filter((c) => c.uid !== a.cardUid);
+    }
     const name = cardDef(card.defId).name;
     if (a.type === 'sell') {
       archive.push(card);
       coins[seat] += 3;
       log.push({ term: s.term, turn: s.turn, seat, text: `sold ${name}` });
-    } else if (a.type === 'chronoKeep') {
-      kept[seat] = card;
-      p.flags.chronoUsed = 1;
-      log.push({ term: s.term, turn: s.turn, seat, text: 'kept a card for next term' });
     } else {
       const pl = a.payment;
       coins[seat] -= paid(pl);
-      const left = leftOf(before, seat);
-      const right = rightOf(before, seat);
-      coins[left] += pl.coinsToLeft + (pl.coinsToLeft > 0 && hasPower(before, left, 'hydroTradeBonus') ? 1 : 0);
-      coins[right] += pl.coinsToRight + (pl.coinsToRight > 0 && hasPower(before, right, 'hydroTradeBonus') ? 1 : 0);
+      coins[leftOf(before, seat)] += pl.coinsToLeft;
+      coins[rightOf(before, seat)] += pl.coinsToRight;
       if (a.type === 'build') {
         p.built.push(card);
-        builtNow.push({ seat, card, free: pl.free });
-        log.push({ term: s.term, turn: s.turn, seat, text: `built ${name}` });
+        builtNow.push({ seat, card });
+        log.push({ term: s.term, turn: s.turn, seat, text: phase === 'discard' ? `built ${name} from the discard pile` : `built ${name}` });
       } else {
         p.towerCards.push(card);
         p.towerStages += 1;
@@ -142,23 +174,29 @@ export function resolveTurn(s: GameState): GameState {
 
   let next: GameState = { ...s, players: players.map((p, i) => ({ ...p, coins: coins[i] })), kept, archive, log };
 
-  // Immediate coin effects of cards built this turn (counted after all placements).
+  // Immediate effects of cards and tower levels built this turn (counted after all placements).
   const extra = next.players.map(() => 0);
   for (const b of builtNow) {
     for (const e of cardDef(b.card.defId).effects) {
       if (e.kind === 'coins') extra[b.seat] += e.amount;
       if (e.kind === 'coinsPer') extra[b.seat] += e.per * scopeCount(next, b.seat, e.what, e.scope);
     }
-    if (b.free && hasPower(next, b.seat, 'runeChainCoins')) extra[b.seat] += 2;
   }
-  next = { ...next, players: next.players.map((p, i) => ({ ...p, coins: p.coins + extra[i] })) };
   for (const seat of stagesNow) {
     const p = next.players[seat];
-    next = applyPowerOnBuild(next, seat, academyDef(p.academyId).sides[p.side][p.towerStages - 1].power);
+    for (const e of academyDef(p.academyId).sides[p.side][p.towerStages - 1].effects) {
+      if (e.kind === 'coins') extra[seat] += e.amount;
+      if (e.kind === 'buildDiscard') picks[seat] += 1;
+    }
   }
+  next = { ...next, players: next.players.map((p, i) => ({ ...p, coins: p.coins + extra[i] })) };
 
-  if (bonus) return { ...next, phase: 'picking' };
-  return advance(next);
+  // Free builds from the discard pile come right away; with nothing to take, they are lost.
+  const owed = picks.map((n, seat) => (n > 0 && discardChoices(next, seat).length > 0 ? n : 0));
+  const resume = phase === 'discard' ? (s.resume ?? 'advance') : phase === 'bonus' ? 'endTerm' : 'advance';
+  if (owed.some((n) => n > 0)) return { ...next, phase: 'discard', discardPicks: owed, resume };
+  next = { ...next, discardPicks: owed };
+  return resume === 'endTerm' ? endTerm(next) : advance({ ...next, phase: 'picking' });
 }
 
 function advance(s: GameState): GameState {
@@ -170,11 +208,19 @@ function advance(s: GameState): GameState {
     }
     return { ...s, turn: s.turn + 1, players: s.players.map((p, i) => ({ ...p, hand: hands[i] })) };
   }
-  // End of term: archive the last card, duels, then next term or game end.
-  const archive = [...s.archive, ...s.players.flatMap((p) => p.hand)];
-  let next: GameState = { ...s, archive, players: s.players.map((p) => ({ ...p, hand: [] })) };
+  // After turn 6: seats that may play their last card do so in a bonus turn.
+  const kept = s.players.map((p) => (p.hand.length && hasPower(s, p.seat, 'playLastCard') ? p.hand[0] : null));
+  if (kept.some((k) => k)) {
+    return { ...s, phase: 'bonus', kept, players: s.players.map((p, i) => (kept[i] ? { ...p, hand: [] } : p)) };
+  }
+  return endTerm(s);
+}
+
+/** End of term: discard the last cards, duels, then the next term or the end of the game. */
+function endTerm(s: GameState): GameState {
+  const archive = [...s.archive, ...s.players.flatMap((p) => p.hand), ...s.kept.filter((k): k is Card => !!k)];
+  let next: GameState = { ...s, archive, kept: s.players.map(() => null), players: s.players.map((p) => ({ ...p, hand: [] })) };
   next = resolveDuels(next, s.term);
   if (s.term === 3) return { ...next, phase: 'ended' };
-  next = dealTerm(next, (s.term + 1) as Term);
-  return next.kept.some((k) => k) ? { ...next, phase: 'bonus' } : { ...next, phase: 'picking' };
+  return { ...dealTerm(next, (s.term + 1) as Term), phase: 'picking' };
 }

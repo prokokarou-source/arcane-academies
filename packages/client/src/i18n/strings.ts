@@ -325,6 +325,11 @@ export const en = {
   react_goodMove: 'Good move!',
   react_hurry: 'Hurry up!',
   react_gg: 'Good game!',
+  // game screen: pass direction and built cards
+  passTo: 'Cards pass to {name}',
+  passGets: 'gets your hand',
+  passGives: 'passes to you',
+  builtOf: 'Built cards of {name}',
 } as const;
 
 export type StringKey = keyof typeof en;

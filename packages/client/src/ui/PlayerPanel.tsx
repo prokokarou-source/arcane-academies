@@ -7,7 +7,7 @@ import { academyArt, Crest } from './Icon';
 import { FAMILIES as ORDER, FamilyIcon } from './Family';
 
 /** A bottom sheet with one academy's public state. */
-export function PlayerPanel(props: { player: PublicPlayer; status?: SeatStatus; onClose(): void }) {
+export function PlayerPanel(props: { player: PublicPlayer; status?: SeatStatus; onClose(): void; onInfo(defId: string): void }) {
   const t = useT();
   const p = props.player;
   const name = props.status?.name ?? p.config.name;
@@ -66,9 +66,11 @@ export function PlayerPanel(props: { player: PublicPlayer; status?: SeatStatus; 
             {built.map((c) => {
               const d = cardDef(c.defId);
               return (
-                <li key={c.uid} className={`chip fam-${d.family}`} data-family={d.family}>
-                  <FamilyIcon family={d.family} label={t(`fam_${d.family}`)} />
-                  {d.name}
+                <li key={c.uid} className={`fam-${d.family}`} data-family={d.family}>
+                  <button type="button" className="chip" aria-label={t('about', { name: d.name })} onClick={() => props.onInfo(c.defId)}>
+                    <FamilyIcon family={d.family} label={t(`fam_${d.family}`)} />
+                    {d.name}
+                  </button>
                 </li>
               );
             })}

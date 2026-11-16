@@ -96,3 +96,12 @@ export function waitingFor(view: PlayerView, seats: SeatStatus[]): string[] | nu
     .filter((p) => !p.hasSubmitted && seats[p.seat]?.kind !== 'archmage')
     .map((p) => seats[p.seat]?.name ?? p.config.name);
 }
+
+/**
+ * Who gets my hand after this turn, matching the engine: Terms I and III pass to the left neighbour, Term II to the right.
+ * `from` is the neighbour whose hand I get next, so a new hand arrives from that side.
+ */
+export function passDirection(view: PlayerView): { to: number; from: number; side: 'left' | 'right' } {
+  const { left, right } = neighbors(view);
+  return view.term === 2 ? { to: right, from: left, side: 'right' } : { to: left, from: right, side: 'left' };
+}

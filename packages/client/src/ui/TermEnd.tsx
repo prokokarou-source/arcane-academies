@@ -30,14 +30,14 @@ export function TermEnd(props: { term: number; view: PlayerView; deltas: number[
           {mine}
         </p>
         <ul className="duels">
-          {rows.map((r) => (
-            <li key={r.seat}>
+          {rows.map((r, i) => (
+            <li key={r.seat} className="duel-row" style={{ ['--i' as string]: i }}>
               <span>{t('vs', { name: name(r.seat) })}</span>
               <span className="muted small num">
                 <Icon name="duel" />
                 {r.theirs}
               </span>
-              <span className={r.outcome}>
+              <span className={`${r.outcome} flourish`}>
                 {r.outcome === 'tie' ? t('tie') : `${t(r.outcome as 'win' | 'loss')} ${r.amount > 0 ? '+' : ''}${r.amount}`}
               </span>
             </li>

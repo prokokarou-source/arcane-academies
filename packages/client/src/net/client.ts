@@ -4,7 +4,7 @@
  */
 import type { Action, BotLevel, PlayerView } from '@arcane/engine';
 import { SOCIAL_ERRORS, isSocialMessage } from '@arcane/protocol';
-import type { ClientMessage, ErrorCode, FriendList, LeaderRow, LobbyState, Profile, QuickSize, ReactionId, RoomSettings, SeatId, ServerMessage } from '@arcane/protocol';
+import type { ClientMessage, ErrorCode, FriendList, LeaderRow, LobbyState, Profile, PushSub, QuickSize, ReactionId, RoomSettings, SeatId, ServerMessage } from '@arcane/protocol';
 import { termDuels } from '../game/derive';
 import { clearAccountToken, clearSession, loadAccountToken, loadSession, saveAccountToken, saveSession, type Session } from './session';
 
@@ -90,6 +90,8 @@ export interface ClientState {
   leaderboard: LeaderRow[] | null;
   /** Set when the server confirmed a password change. */
   passwordChanged: boolean;
+  /** The server's push (VAPID) public key once logged in; null when the server has push off. */
+  pushKey: string | null;
 }
 
 const OPEN = 1;
@@ -121,6 +123,7 @@ const INITIAL: ClientState = {
   profile: null,
   leaderboard: null,
   passwordChanged: false,
+  pushKey: null,
 };
 
 export class GameClient {
@@ -282,7 +285,7 @@ export class GameClient {
         if (msg.username === null) {
           this.accountToken = null;
           clearAccountToken(this.deps.storage);
-          this.set({ account: null, accountPending: false, friends: null, invites: [], socialError: null, ...NO_STATS });
+          this.set({ account: null, accountPending: false, friends: null, invites: [], socialError: null, pushKey: null, ...NO_STATS });
         } else {
           if (msg.token) {
             this.accountToken = msg.token;
@@ -303,6 +306,9 @@ export class GameClient {
       case 'quickCancelled':
         this.quickReq = null;
         this.set({ quick: null });
+        return;
+      case 'pushKey':
+        this.set({ pushKey: msg.key });
         return;
       case 'presence': {
         const list = this.state.friends;
@@ -521,7 +527,16 @@ export class GameClient {
     this.send({ t: 'friendRemove', username });
   }
 
-  /** Invite an online friend to the room I am in. */
+  /** Let the server notify this device (subscription from the browser's PushManager). */
+  savePush(sub: PushSub): void {
+    this.send({ t: 'pushSubscribe', sub });
+  }
+
+  removePush(endpoint: string): void {
+    this.send({ t: 'pushUnsubscribe', endpoint });
+  }
+
+  /** Invite a friend to the room I am in. */
   invite(username: string): void {
     this.set({ socialError: null });
     this.send({ t: 'invite', username });

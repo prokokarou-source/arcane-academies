@@ -12,7 +12,8 @@
     "server": "tsx packages/server/src/main.ts",
     "client": "vite packages/client",
     "build": "vite build packages/client",
-    "start": "tsx packages/server/src/main.ts"
+    "start": "tsx packages/server/src/main.ts",
+    "vapid": "node -e \"const k=require('web-push').generateVAPIDKeys();console.log('VAPID_PUBLIC_KEY='+k.publicKey);console.log('VAPID_PRIVATE_KEY='+k.privateKey)\""
   },
   "devDependencies": {
     "tsx": "^4.23.15",

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { LeaderRow } from '@arcane/protocol';
 import { USERNAME_RE } from '@arcane/protocol';
 import { useClient, useClientState, useT } from './context';
+import { PushToggle } from './PushToggle';
 
 /** Friend list with online status, requests, and (inside a lobby) invites. */
 export function Friends(props: { onBack(): void; onAccount(): void }) {
@@ -108,7 +109,7 @@ export function Friends(props: { onBack(): void; onAccount(): void }) {
                   <span className={`dot ${f.online ? 'on' : 'off'}`} />
                   <span className="name">{f.username}</span>
                   <span className="muted small">{f.online ? t('online') : t('offline')}</span>
-                  {lobby && f.online && (
+                  {lobby && (
                     <button
                       disabled={invited.has(f.username)}
                       onClick={() => {
@@ -144,6 +145,8 @@ export function Friends(props: { onBack(): void; onAccount(): void }) {
           </ul>
         </>
       )}
+
+      <PushToggle />
 
       <button className="link" onClick={props.onBack}>
         {t('back')}

@@ -6,7 +6,8 @@ import { defaultServerUrl, healthUrl } from './net/url';
 import { SoundProvider } from './audio/context';
 import { createSoundBoard, htmlAudio } from './audio/sounds';
 import { PwaProvider, type Pwa } from './pwa/context';
-import { createConnectivity, createInstall, createUpdate } from './pwa/install';
+import { createConnectivity, createInstall, createUpdate, isIos, isStandalone } from './pwa/install';
+import { createPush } from './pwa/push';
 import { App, PRIVACY_PATH } from './ui/App';
 import { ErrorBoundary } from './ui/ErrorBoundary';
 import { ClientProvider } from './ui/context';
@@ -40,6 +41,19 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   void import('virtual:pwa-register').then(({ registerSW }) => {
     const updateSW = registerSW({ onNeedRefresh: () => pwa.update.ready(() => void updateSW(true)) });
   });
+  // Notifications need the service worker, so they exist only in the production build too.
+  pwa.push = createPush({
+    ios: isIos(navigator),
+    standalone: isStandalone(window),
+    permission: () => ('Notification' in window && 'PushManager' in window ? Notification.permission : null),
+    requestPermission: () => Notification.requestPermission(),
+    pushManager: () =>
+      Promise.race([
+        navigator.serviceWorker.ready.then((r) => r.pushManager),
+        new Promise<null>((done) => setTimeout(() => done(null), 10_000)),
+      ]),
+  });
+  void pwa.push.refresh();
 }
 
 const sound = createSoundBoard({

@@ -1,3 +1,5 @@
+import type { PushSub } from '@arcane/protocol';
+
 /**
  * Where accounts, login sessions and friendships live.
  * Two implementations share this interface: Postgres (when DATABASE_URL is set) and memory (dev, tests).
@@ -79,7 +81,15 @@ export interface Store {
   totals(userIds: string[]): Promise<Map<string, StatTotals>>;
   /** Newest first. */
   history(userId: string, limit: number): Promise<GameRecord[]>;
+  /** Save a device's push subscription for a user (an endpoint belongs to one user; the latest wins). */
+  addPushSub(userId: string, sub: PushSub): Promise<void>;
+  pushSubs(userId: string): Promise<PushSub[]>;
+  /** Forget a subscription; with `userId`, only if it is that user's. */
+  removePushSub(endpoint: string, userId?: string): Promise<void>;
 }
+
+/** Devices kept per user; the oldest is dropped beyond this. */
+export const MAX_PUSH_SUBS = 10;
 
 export const usernameKey = (u: string) => u.toLowerCase();
 
@@ -89,6 +99,8 @@ export class MemoryStore implements Store {
   private sessions = new Map<string, string>();
   private links: FriendLink[] = [];
   private results: GameRecord[] = [];
+  /** By endpoint, in insertion order (oldest first). */
+  private push = new Map<string, { userId: string; sub: PushSub }>();
   private nextId = 1;
 
   async init(): Promise<void> {}
@@ -167,6 +179,7 @@ export class MemoryStore implements Store {
     await this.deleteSessions(userId);
     this.links = this.links.filter((x) => x.from !== userId && x.to !== userId);
     this.results = this.results.filter((r) => r.userId !== userId);
+    for (const [e, x] of this.push) if (x.userId === userId) this.push.delete(e);
   }
 
   async recordResult(r: GameRecord): Promise<void> {
@@ -193,5 +206,21 @@ export class MemoryStore implements Store {
       .sort((a, b) => b.r.playedAt - a.r.playedAt || b.i - a.i)
       .slice(0, limit)
       .map((x) => ({ ...x.r }));
+  }
+
+  async addPushSub(userId: string, sub: PushSub): Promise<void> {
+    this.push.delete(sub.endpoint);
+    this.push.set(sub.endpoint, { userId, sub: { endpoint: sub.endpoint, keys: { ...sub.keys } } });
+    const mine = [...this.push.values()].filter((x) => x.userId === userId);
+    for (const x of mine.slice(0, Math.max(0, mine.length - MAX_PUSH_SUBS))) this.push.delete(x.sub.endpoint);
+  }
+
+  async pushSubs(userId: string): Promise<PushSub[]> {
+    return [...this.push.values()].filter((x) => x.userId === userId).map((x) => ({ endpoint: x.sub.endpoint, keys: { ...x.sub.keys } }));
+  }
+
+  async removePushSub(endpoint: string, userId?: string): Promise<void> {
+    const x = this.push.get(endpoint);
+    if (x && (userId === undefined || x.userId === userId)) this.push.delete(endpoint);
   }
 }

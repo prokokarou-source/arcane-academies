@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import { hashPassword, hashToken, newToken, verifyPassword } from '../src/passwords';
 import { PgStore } from '../src/pgStore';
-import { MemoryStore, type Store } from '../src/store';
+import { MAX_PUSH_SUBS, MemoryStore, type Store } from '../src/store';
 
 describe('passwords', () => {
   it('hashes with a salt and verifies only the right password', async () => {
@@ -109,6 +109,31 @@ function contract(name: string, make: () => Store) {
       expect((await store.totals([ho.id])).get(ho.id)?.games).toBe(0);
       // The name is free again.
       expect(await store.createUser(n('Ho'), 'h')).not.toBeNull();
+    });
+
+    it('keeps push subscriptions per user; an endpoint moves to the latest user', async () => {
+      const ed = (await store.createUser(n('Pe'), 'h'))!;
+      const fy = (await store.createUser(n('Pf'), 'h'))!;
+      const sub = (i: number) => ({ endpoint: `https://push.example.com/${uniq}/${i}`, keys: { p256dh: `p${i}`, auth: `a${i}` } });
+      await store.addPushSub(ed.id, sub(1));
+      await store.addPushSub(ed.id, { ...sub(1), keys: { p256dh: 'new', auth: 'new' } });
+      expect(await store.pushSubs(ed.id)).toEqual([{ ...sub(1), keys: { p256dh: 'new', auth: 'new' } }]);
+      await store.addPushSub(fy.id, sub(1));
+      expect(await store.pushSubs(ed.id)).toEqual([]);
+      expect(await store.pushSubs(fy.id)).toEqual([sub(1)]);
+      await store.removePushSub(sub(1).endpoint, ed.id); // not Ed's: kept
+      expect(await store.pushSubs(fy.id)).toHaveLength(1);
+      await store.removePushSub(sub(1).endpoint);
+      expect(await store.pushSubs(fy.id)).toEqual([]);
+    });
+
+    it('keeps at most MAX_PUSH_SUBS devices per user, dropping the oldest', async () => {
+      const gi = (await store.createUser(n('Pg'), 'h'))!;
+      for (let i = 0; i <= MAX_PUSH_SUBS; i++)
+        await store.addPushSub(gi.id, { endpoint: `https://push.example.com/${uniq}/g${i}`, keys: { p256dh: 'p', auth: 'a' } });
+      const kept = (await store.pushSubs(gi.id)).map((s) => s.endpoint);
+      expect(kept).toHaveLength(MAX_PUSH_SUBS);
+      expect(kept).not.toContain(`https://push.example.com/${uniq}/g0`);
     });
   });
 }

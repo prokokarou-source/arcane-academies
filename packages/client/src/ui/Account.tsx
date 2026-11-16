@@ -1,12 +1,15 @@
 import { useState } from 'react';
 import { MAX_PASSWORD, MIN_PASSWORD, USERNAME_RE } from '@arcane/protocol';
+import { usePush } from '../pwa/context';
 import { useClient, useClientState, useT } from './context';
+import { PushToggle } from './PushToggle';
 
 /** Log in or create an account (username + password). Optional: guests can always play. */
 export function Account(props: { onBack(): void; onFriends(): void; onProfile(): void; onPrivacy?(): void }) {
   const client = useClient();
   const t = useT();
   const { account, accountPending, socialError } = useClientState();
+  const push = usePush();
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -20,7 +23,16 @@ export function Account(props: { onBack(): void; onFriends(): void; onProfile():
           {t('profile')}
         </button>
         <button onClick={props.onFriends}>{t('friends')}</button>
-        <button onClick={() => client.logout()}>{t('logOut')}</button>
+        <PushToggle />
+        <button
+          onClick={async () => {
+            // This device should stop getting this account's notifications.
+            if (push.store && push.status === 'on') await push.store.disable((e) => client.removePush(e));
+            client.logout();
+          }}
+        >
+          {t('logOut')}
+        </button>
         <ManageAccount />
         <button className="link" onClick={props.onBack}>
           {t('back')}

@@ -8,6 +8,7 @@ import { RoomManager, type ManagerOptions } from './manager';
 import type { Conn } from './room';
 import { Social } from './social';
 import { staticHandler } from './static';
+import type { PushConfig } from './push';
 import { MemoryStore, type Store } from './store';
 
 export interface ServerOptions {
@@ -22,6 +23,8 @@ export interface ServerOptions {
   store?: Store;
   /** Rate limit and log sink for client crash reports (tests override them). */
   clientErrors?: ClientErrorOptions;
+  /** Web Push settings (from the VAPID env vars); notifications are off when missing. */
+  push?: PushConfig | null;
 }
 
 export interface RunningServer {
@@ -57,7 +60,7 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
     { ...opts.manager, accountOf: (c) => social.userOf(c)?.id ?? null, onResults: (r) => social.recordResults(r) },
     realClock,
   );
-  const social: Social = new Social(store, { roomOf: (c) => manager.codeOf(c), clock: realClock });
+  const social: Social = new Social(store, { roomOf: (c) => manager.codeOf(c), clock: realClock, push: opts.push ?? null });
   const serveStatic = opts.staticDir ? staticHandler(opts.staticDir) : null;
   const reportClientError = clientErrorHandler(opts.clientErrors);
   const http = createServer((req, res) => {

@@ -165,3 +165,23 @@ describe('stats and account management messages', () => {
     expect(parseClientMessage(JSON.stringify({ t: 'deleteAccount', password: 12 }))).toBeNull();
   });
 });
+
+describe('push messages', () => {
+  const sub = { endpoint: 'https://push.example.com/abc', keys: { p256dh: 'BPk', auth: 'aut' } };
+
+  it('round-trip, are social, and drop extra fields', () => {
+    for (const m of [{ t: 'pushSubscribe', sub }, { t: 'pushUnsubscribe', endpoint: sub.endpoint }] as ClientMessage[]) {
+      expect(parseClientMessage(encode(m))).toEqual(m);
+      expect(isSocialMessage(m)).toBe(true);
+    }
+    const extra = { t: 'pushSubscribe', sub: { ...sub, expirationTime: null, keys: { ...sub.keys, x: 1 } } };
+    expect(parseClientMessage(JSON.stringify(extra))).toEqual({ t: 'pushSubscribe', sub });
+  });
+
+  it('rejects non-https endpoints and missing keys', () => {
+    expect(parseClientMessage(JSON.stringify({ t: 'pushSubscribe', sub: { ...sub, endpoint: 'http://push.example.com/a' } }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ t: 'pushSubscribe', sub: { endpoint: sub.endpoint } }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ t: 'pushSubscribe', sub: { ...sub, keys: { p256dh: 'x' } } }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ t: 'pushUnsubscribe', endpoint: 'file:///etc' }))).toBeNull();
+  });
+});

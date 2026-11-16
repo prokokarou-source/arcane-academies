@@ -53,7 +53,54 @@ export interface SeatStatus {
   botControlled: boolean;
 }
 
+/** Usernames: 3–20 letters, digits or underscores; unique ignoring case. */
+export const USERNAME_RE = /^[A-Za-z0-9_]{3,20}$/;
+export const MIN_PASSWORD = 6;
+export const MAX_PASSWORD = 128;
+
+export interface FriendInfo {
+  username: string;
+  online: boolean;
+}
+
+/** My friend list: accepted friends plus requests waiting on either side. */
+export interface FriendList {
+  friends: FriendInfo[];
+  /** People who asked to be my friend. */
+  incoming: string[];
+  /** People I asked, still waiting. */
+  outgoing: string[];
+}
+
+/** Account and friend messages; handled apart from rooms and never tied to a seat. */
+export type SocialMessage =
+  | { t: 'signup'; username: string; password: string }
+  | { t: 'login'; username: string; password: string }
+  /** Resume a saved login (the token from 'account'). */
+  | { t: 'auth'; token: string }
+  | { t: 'logout' }
+  | { t: 'friendRequest'; username: string }
+  | { t: 'friendAccept'; username: string }
+  /** Decline a request, cancel my own, or unfriend. */
+  | { t: 'friendRemove'; username: string }
+  /** Invite an online friend to the room I am in. */
+  | { t: 'invite'; username: string };
+
+export const SOCIAL_TYPES: readonly SocialMessage['t'][] = [
+  'signup',
+  'login',
+  'auth',
+  'logout',
+  'friendRequest',
+  'friendAccept',
+  'friendRemove',
+  'invite',
+];
+
+export const isSocialMessage = (m: ClientMessage): m is SocialMessage => (SOCIAL_TYPES as readonly string[]).includes(m.t);
+
 export type ClientMessage =
+  | SocialMessage
   | { t: 'create'; name: string }
   | { t: 'join'; code: string; name: string }
   | { t: 'rejoin'; code: string; token: string }
@@ -80,7 +127,38 @@ export type ErrorCode =
   | 'bad_settings'
   | 'wrong_phase'
   | 'seat_count'
-  | 'illegal_action';
+  | 'illegal_action'
+  // accounts and friends
+  | 'bad_username'
+  | 'bad_password'
+  | 'username_taken'
+  | 'bad_login'
+  | 'bad_session'
+  | 'too_many_attempts'
+  | 'not_logged_in'
+  | 'no_user'
+  | 'not_friends'
+  | 'friend_offline'
+  | 'busy'
+  | 'invite_no_room'
+  | 'unavailable';
+
+/** Errors that belong to the account and friend screens rather than the room. */
+export const SOCIAL_ERRORS: readonly ErrorCode[] = [
+  'bad_username',
+  'bad_password',
+  'username_taken',
+  'bad_login',
+  'bad_session',
+  'too_many_attempts',
+  'not_logged_in',
+  'no_user',
+  'not_friends',
+  'friend_offline',
+  'busy',
+  'invite_no_room',
+  'unavailable',
+];
 
 export type CloseReason = 'expired' | 'replaced' | 'left' | 'removed';
 
@@ -94,7 +172,14 @@ export type ServerMessage =
   | { t: 'lobby'; lobby: LobbyState }
   | { t: 'game'; view: PlayerView; legal: Action[]; seats: SeatStatus[]; deadline: number | null; result?: GameResult }
   | { t: 'error'; code: ErrorCode; message: string }
-  | { t: 'closed'; reason: CloseReason };
+  | { t: 'closed'; reason: CloseReason }
+  /** Logged in (token only after signup/login, to be saved) or logged out (username null). */
+  | { t: 'account'; username: string | null; token?: string }
+  | { t: 'friends'; list: FriendList }
+  /** A friend came online or went offline. */
+  | { t: 'presence'; username: string; online: boolean }
+  /** A friend invites me to their room. */
+  | { t: 'invite'; from: string; code: string };
 
 export function encode(msg: ClientMessage | ServerMessage): string {
   return JSON.stringify(msg);
@@ -167,8 +252,24 @@ function settings(v: unknown): Partial<RoomSettings> | null {
   return out;
 }
 
+/** Shape only (strings of sane length); the server checks the username and password rules. */
+const isUser = (v: unknown): v is string => isStr(v, 64);
+const isPass = (v: unknown): v is string => typeof v === 'string' && v.length <= MAX_PASSWORD;
+
 function parseObj(m: Obj): ClientMessage | null {
   switch (m.t) {
+    case 'signup':
+    case 'login':
+      return isUser(m.username) && isPass(m.password) ? { t: m.t, username: m.username, password: m.password } : null;
+    case 'auth':
+      return isStr(m.token, 128) ? { t: 'auth', token: m.token } : null;
+    case 'logout':
+      return { t: 'logout' };
+    case 'friendRequest':
+    case 'friendAccept':
+    case 'friendRemove':
+    case 'invite':
+      return isUser(m.username) ? { t: m.t, username: m.username } : null;
     case 'create': {
       const n = name(m.name);
       return n ? { t: 'create', name: n } : null;

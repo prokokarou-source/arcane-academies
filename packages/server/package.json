@@ -7,10 +7,12 @@
   "dependencies": {
     "@arcane/engine": "0.1.0",
     "@arcane/protocol": "0.1.0",
+    "pg": "^8.23.1",
     "ws": "^8.18.0"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
+    "@types/pg": "^8.23.1",
     "@types/ws": "^8.5.12"
   }
 }

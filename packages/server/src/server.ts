@@ -1,11 +1,13 @@
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { encode, MAX_MESSAGE_BYTES, parseClientMessage, type CloseReason } from '@arcane/protocol';
+import { encode, isSocialMessage, MAX_MESSAGE_BYTES, parseClientMessage, type CloseReason } from '@arcane/protocol';
 import { realClock } from './clock';
 import { RoomManager, type ManagerOptions } from './manager';
 import type { Conn } from './room';
+import { Social } from './social';
 import { staticHandler } from './static';
+import { MemoryStore, type Store } from './store';
 
 export interface ServerOptions {
   port: number;
@@ -15,11 +17,14 @@ export interface ServerOptions {
   heartbeatMs?: number;
   /** Folder with the built web client (packages/client/dist). When set, the server also serves the game page. */
   staticDir?: string;
+  /** Accounts and friends; in memory when not given. Closed together with the server. */
+  store?: Store;
 }
 
 export interface RunningServer {
   port: number;
   manager: RoomManager;
+  social: Social;
   close(): Promise<void>;
 }
 
@@ -44,6 +49,8 @@ function wrap(ws: WebSocket): Conn {
 /** Start the HTTP + WebSocket server. `port: 0` picks a free port. */
 export function startServer(opts: ServerOptions): Promise<RunningServer> {
   const manager = new RoomManager(opts.manager ?? {}, realClock);
+  const store = opts.store ?? new MemoryStore();
+  const social = new Social(store, { roomOf: (c) => manager.codeOf(c), clock: realClock });
   const serveStatic = opts.staticDir ? staticHandler(opts.staticDir) : null;
   const http = createServer((req, res) => {
     if (req.method === 'GET' && req.url === '/health') {
@@ -71,7 +78,8 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
       try {
         const msg = isBinary ? null : parseClientMessage(data.toString());
         if (!msg) return conn.send({ t: 'error', code: 'bad_message', message: 'Malformed message' });
-        manager.onMessage(conn, msg);
+        if (isSocialMessage(msg)) void social.handle(conn, msg);
+        else manager.onMessage(conn, msg);
       } catch (e) {
         console.error('message handler failed', e);
         conn.send({ t: 'error', code: 'bad_message', message: 'Server error' });
@@ -79,6 +87,7 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
     });
     ws.on('close', () => {
       try {
+        social.onClose(conn);
         manager.onClose(conn);
       } catch (e) {
         console.error('close handler failed', e);
@@ -105,12 +114,13 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
       resolve({
         port: (http.address() as AddressInfo).port,
         manager,
+        social,
         close: () =>
           new Promise<void>((done) => {
             clearInterval(heartbeat);
             manager.stop();
             for (const ws of wss.clients) ws.terminate();
-            wss.close(() => http.close(() => done()));
+            wss.close(() => http.close(() => void store.close().then(done, done)));
           }),
       });
     });

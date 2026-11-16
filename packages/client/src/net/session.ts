@@ -34,3 +34,31 @@ export function clearSession(storage: Store): void {
     // ignore
   }
 }
+
+/** The saved login token. Unlike the seat, every tab shares it: logging in once logs in this browser. */
+const ACCOUNT_KEY = 'arcane.account';
+
+export function loadAccountToken(storage: Store): string | null {
+  try {
+    const v = JSON.parse(storage.getItem(ACCOUNT_KEY) ?? 'null') as { token?: unknown } | null;
+    return v && typeof v.token === 'string' ? v.token : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveAccountToken(storage: Store, token: string): void {
+  try {
+    storage.setItem(ACCOUNT_KEY, JSON.stringify({ token }));
+  } catch {
+    // ignore: the login lasts until this tab closes
+  }
+}
+
+export function clearAccountToken(storage: Store): void {
+  try {
+    storage.removeItem(ACCOUNT_KEY);
+  } catch {
+    // ignore
+  }
+}

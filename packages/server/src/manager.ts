@@ -35,6 +35,12 @@ export class RoomManager {
     return this.rooms.get(normalizeCode(code));
   }
 
+  /** The code of the open room this connection is seated in, if any. */
+  codeOf(conn: Conn): string | null {
+    const room = this.connRoom.get(conn);
+    return room && !room.closed && room.hasMember(conn) ? room.code : null;
+  }
+
   size(): number {
     return this.rooms.size;
   }

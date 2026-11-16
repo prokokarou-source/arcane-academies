@@ -125,3 +125,41 @@ describe('websocket server', () => {
     expect((await fetch(`http://127.0.0.1:${port}/nope`)).status).toBe(404);
   });
 });
+
+describe('accounts over the wire', () => {
+  it('two accounts befriend, see each other online, and an invite leads into the room', async () => {
+    const port = await boot();
+    const a = await client(port);
+    const b = await client(port);
+    a.send({ t: 'signup', username: 'Ana', password: 'secret1' });
+    b.send({ t: 'signup', username: 'Bob', password: 'secret1' });
+    await a.waitFor('account');
+    await b.waitFor('account');
+
+    a.send({ t: 'friendRequest', username: 'Bob' });
+    await b.waitFor('friends', (m) => m.list.incoming.includes('Ana'));
+    b.send({ t: 'friendAccept', username: 'Ana' });
+    await a.waitFor('friends', (m) => m.list.friends.some((f) => f.username === 'Bob' && f.online));
+
+    a.send({ t: 'create', name: 'Ana' });
+    const { code } = await a.waitFor('joined');
+    a.send({ t: 'invite', username: 'Bob' });
+    const invite = await b.waitFor('invite');
+    expect(invite).toEqual({ t: 'invite', from: 'Ana', code });
+    b.send({ t: 'join', code: invite.code, name: 'Bob' });
+    await a.waitFor('lobby', (m) => m.lobby.seats.length === 2);
+
+    const from = a.messages.length;
+    b.close();
+    expect(await a.waitFor('presence', () => true, from)).toEqual({ t: 'presence', username: 'Bob', online: false });
+  });
+
+  it('a guest can still create and join rooms without logging in', async () => {
+    const port = await boot();
+    const a = await client(port);
+    a.send({ t: 'create', name: 'Guest' });
+    await a.waitFor('lobby');
+    a.send({ t: 'invite', username: 'Bob' });
+    expect((await a.waitFor('error')).code).toBe('not_logged_in');
+  });
+});

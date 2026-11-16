@@ -12,7 +12,7 @@ const TIMERS = [30_000, 60_000, 90_000, 120_000, 300_000];
 
 const duration = (t: T, ms: number) => (ms < 60_000 ? t('seconds', { n: ms / 1000 }) : t('minutes', { n: ms / 60_000 }));
 
-export function Lobby() {
+export function Lobby(props: { onFriends?: () => void } = {}) {
   const client = useClient();
   const sound = useSound();
   const t = useT();
@@ -153,6 +153,8 @@ export function Lobby() {
       ) : (
         <p className="muted center">{t('waitingHost')}</p>
       )}
+
+      {props.onFriends && <button onClick={props.onFriends}>{t('inviteFriends')}</button>}
 
       <button className="link" onClick={() => client.leave()}>
         {t('leave')}

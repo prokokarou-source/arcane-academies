@@ -3,9 +3,10 @@
  * Framework-free: sockets, storage and timers are injected so tests can drive it.
  */
 import type { Action, BotLevel, PlayerView } from '@arcane/engine';
-import type { ClientMessage, ErrorCode, LobbyState, RoomSettings, SeatId, ServerMessage } from '@arcane/protocol';
+import { SOCIAL_ERRORS, isSocialMessage } from '@arcane/protocol';
+import type { ClientMessage, ErrorCode, FriendList, LobbyState, RoomSettings, SeatId, ServerMessage } from '@arcane/protocol';
 import { termDuels } from '../game/derive';
-import { clearSession, loadSession, saveSession, type Session } from './session';
+import { clearAccountToken, clearSession, loadAccountToken, loadSession, saveAccountToken, saveSession, type Session } from './session';
 
 export interface SocketLike {
   readyState: number;
@@ -38,6 +39,11 @@ export interface TermDuels {
   deltas: number[];
 }
 
+export interface Invite {
+  from: string;
+  code: string;
+}
+
 export interface ClientState {
   conn: 'connecting' | 'open' | 'reconnecting' | 'stopped';
   seatId: SeatId | null;
@@ -54,6 +60,15 @@ export interface ClientState {
   acting: boolean;
   /** True while a game stored on this phone is being rejoined at startup. */
   restoring: boolean;
+  /** Logged-in username, or null for a guest. */
+  account: string | null;
+  /** A signup, login or saved-login check is waiting for the server. */
+  accountPending: boolean;
+  friends: FriendList | null;
+  /** Room invites from friends, newest last. */
+  invites: Invite[];
+  /** The last account or friend error, shown on those screens instead of the room banner. */
+  socialError: { code: ErrorCode; message: string } | null;
 }
 
 const OPEN = 1;
@@ -75,6 +90,11 @@ const INITIAL: ClientState = {
   notice: null,
   acting: false,
   restoring: false,
+  account: null,
+  accountPending: false,
+  friends: null,
+  invites: [],
+  socialError: null,
 };
 
 export class GameClient {
@@ -89,6 +109,8 @@ export class GameClient {
   /** The seat this client holds. Storage is read once at start (reload) and only written afterwards, so tabs never steal from each other. */
   private session: Session | null = null;
   private soloPlan: { bots: number; level: BotLevel } | null = null;
+  /** Saved login, resent on every (re)connect so presence follows the socket. */
+  private accountToken: string | null = null;
 
   constructor(private readonly deps: ClientDeps) {}
 
@@ -111,7 +133,12 @@ export class GameClient {
   start(): void {
     this.stopped = false;
     this.session = loadSession(this.deps.storage);
-    this.set({ restoring: !!this.session, ...(this.session?.hostId ? { hostId: this.session.hostId } : {}) });
+    this.accountToken = loadAccountToken(this.deps.storage);
+    this.set({
+      restoring: !!this.session,
+      accountPending: !!this.accountToken,
+      ...(this.session?.hostId ? { hostId: this.session.hostId } : {}),
+    });
     this.connect();
   }
 
@@ -156,6 +183,7 @@ export class GameClient {
   private onOpen(): void {
     this.backoff = MIN_BACKOFF;
     this.set({ conn: 'open' });
+    if (this.accountToken) this.raw({ t: 'auth', token: this.accountToken });
     const session = this.session;
     if (session) {
       // Moves made while offline wait until the seat is back (or dropped, see dropSession).
@@ -213,7 +241,46 @@ export class GameClient {
         this.rejoined();
         this.onGame(msg);
         return;
+      case 'account':
+        if (msg.username === null) {
+          this.accountToken = null;
+          clearAccountToken(this.deps.storage);
+          this.set({ account: null, accountPending: false, friends: null, invites: [], socialError: null });
+        } else {
+          if (msg.token) {
+            this.accountToken = msg.token;
+            saveAccountToken(this.deps.storage, msg.token);
+          }
+          this.set({ account: msg.username, accountPending: false, socialError: null });
+        }
+        return;
+      case 'friends':
+        this.set({ friends: msg.list });
+        return;
+      case 'presence': {
+        const list = this.state.friends;
+        if (!list) return;
+        const friends = list.friends
+          .map((f) => (f.username === msg.username ? { ...f, online: msg.online } : f))
+          .sort((a, b) => Number(b.online) - Number(a.online) || a.username.localeCompare(b.username, 'en', { sensitivity: 'base' }));
+        this.set({ friends: { ...list, friends } });
+        return;
+      }
+      case 'invite':
+        this.set({ invites: [...this.state.invites.filter((i) => i.from !== msg.from), { from: msg.from, code: msg.code }] });
+        return;
       case 'error':
+        if (SOCIAL_ERRORS.includes(msg.code)) {
+          if (msg.code === 'bad_session') {
+            // The saved login was ended elsewhere: carry on as a guest.
+            this.accountToken = null;
+            clearAccountToken(this.deps.storage);
+            this.set({ account: null, accountPending: false, friends: null });
+            return;
+          }
+          this.set({ socialError: { code: msg.code, message: msg.message }, accountPending: false });
+          return;
+        }
         if (this.rejoinPending && DEAD_SESSION.includes(msg.code)) {
           this.rejoinPending = false;
           this.dropSession('rejoinFailed');
@@ -253,7 +320,7 @@ export class GameClient {
     this.session = null;
     this.rejoinPending = false;
     // Moves for the lost room are meaningless now; creating or joining a new room still makes sense.
-    this.queue = this.queue.filter((m) => m.t === 'create' || m.t === 'join');
+    this.queue = this.queue.filter((m) => m.t === 'create' || m.t === 'join' || isSocialMessage(m));
     // Replaced: another tab or device holds the seat now and may share this storage, so leave it alone.
     if (notice !== 'replaced') clearSession(this.deps.storage);
     this.soloPlan = null;
@@ -333,6 +400,56 @@ export class GameClient {
 
   rematch(): void {
     this.send({ t: 'rematch' });
+  }
+
+  // ---------- accounts and friends ----------
+
+  signup(username: string, password: string): void {
+    this.set({ accountPending: true, socialError: null });
+    this.send({ t: 'signup', username, password });
+  }
+
+  login(username: string, password: string): void {
+    this.set({ accountPending: true, socialError: null });
+    this.send({ t: 'login', username, password });
+  }
+
+  logout(): void {
+    this.send({ t: 'logout' });
+  }
+
+  requestFriend(username: string): void {
+    this.set({ socialError: null });
+    this.send({ t: 'friendRequest', username });
+  }
+
+  acceptFriend(username: string): void {
+    this.send({ t: 'friendAccept', username });
+  }
+
+  /** Decline, cancel or unfriend. */
+  removeFriend(username: string): void {
+    this.send({ t: 'friendRemove', username });
+  }
+
+  /** Invite an online friend to the room I am in. */
+  invite(username: string): void {
+    this.set({ socialError: null });
+    this.send({ t: 'invite', username });
+  }
+
+  /** Join the room of an invite (leaving the current lobby, if any). */
+  acceptInvite(invite: Invite, name: string): void {
+    this.set({ invites: this.state.invites.filter((i) => i !== invite) });
+    this.join(invite.code, name);
+  }
+
+  dismissInvite(invite: Invite): void {
+    this.set({ invites: this.state.invites.filter((i) => i !== invite) });
+  }
+
+  clearSocialError(): void {
+    this.set({ socialError: null });
   }
 
   clearError(): void {

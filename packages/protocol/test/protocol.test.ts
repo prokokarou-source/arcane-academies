@@ -74,3 +74,32 @@ describe('protocol', () => {
     expect(parseClientMessage('{"t":"create","name":"  Ana  ","evil":1}')).toEqual({ t: 'create', name: 'Ana' });
   });
 });
+
+describe('account messages', () => {
+  it('round-trip and are recognised as social', async () => {
+    const { isSocialMessage } = await import('../src/index');
+    const msgs: ClientMessage[] = [
+      { t: 'signup', username: 'Ana', password: 'secret1' },
+      { t: 'login', username: 'Ana', password: 'secret1' },
+      { t: 'auth', token: 'x'.repeat(43) },
+      { t: 'logout' },
+      { t: 'friendRequest', username: 'Bob' },
+      { t: 'friendAccept', username: 'Bob' },
+      { t: 'friendRemove', username: 'Bob' },
+      { t: 'invite', username: 'Bob' },
+    ];
+    for (const m of msgs) {
+      expect(parseClientMessage(encode(m))).toEqual(m);
+      expect(isSocialMessage(m)).toBe(true);
+    }
+    expect(isSocialMessage({ t: 'create', name: 'Ana' })).toBe(false);
+  });
+
+  it('rejects malformed account messages', () => {
+    expect(parseClientMessage(JSON.stringify({ t: 'login', username: 'Ana' }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ t: 'signup', username: '', password: 'x' }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ t: 'login', username: 'Ana', password: 'x'.repeat(129) }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ t: 'invite', username: 7 }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ t: 'auth' }))).toBeNull();
+  });
+});

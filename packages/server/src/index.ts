@@ -6,3 +6,7 @@ export { Room, MAX_SEATS } from './room';
 export type { Conn, RoomOptions } from './room';
 export { realClock, ManualClock } from './clock';
 export type { Clock } from './clock';
+export { Social } from './social';
+export { MemoryStore } from './store';
+export type { Store, User } from './store';
+export { PgStore } from './pgStore';

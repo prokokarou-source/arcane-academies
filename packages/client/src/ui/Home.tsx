@@ -1,21 +1,28 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ACADEMIES, type BotLevel } from '@arcane/engine';
 import { MAX_NAME } from '@arcane/protocol';
 import { useSound } from '../audio/context';
 import { useInstall } from '../pwa/context';
-import { useClient, usePrefs, useT } from './context';
+import { useClient, useClientState, usePrefs, useT } from './context';
 import { Crest } from './Icon';
 
 export const LEVELS: BotLevel[] = ['easy', 'normal', 'hard'];
 
-export function Home(props: { initialRoom?: string; onRules(): void; onSettings(): void }) {
+export function Home(props: { initialRoom?: string; onRules(): void; onSettings(): void; onAccount(): void; onFriends(): void }) {
   const client = useClient();
+  const { account, friends } = useClientState();
   const t = useT();
   const [prefs, setPrefs] = usePrefs();
   const [name, setName] = useState(prefs.name);
   const [code, setCode] = useState((props.initialRoom ?? '').toUpperCase());
   const [bots, setBots] = useState(3);
   const [level, setLevel] = useState<BotLevel>('normal');
+  // A logged-in player with no name yet plays under their username.
+  useEffect(() => {
+    if (account) setName((n) => n || account);
+  }, [account]);
+  const online = friends?.friends.filter((f) => f.online).length ?? 0;
+  const requests = friends?.incoming.length ?? 0;
   const install = useInstall();
   const sound = useSound();
 
@@ -37,6 +44,22 @@ export function Home(props: { initialRoom?: string; onRules(): void; onSettings(
           ))}
         </div>
       </header>
+
+      {account ? (
+        <section className="panel row">
+          <button className="link" onClick={props.onAccount}>
+            {t('signedInAs', { name: account })}
+          </button>
+          <button onClick={props.onFriends}>
+            {t('friendsOnline', { n: online })}
+            {requests > 0 && <span className="tag">{`+${requests}`}</span>}
+          </button>
+        </section>
+      ) : (
+        <button className="link" onClick={props.onAccount}>
+          {t('signInOrUp')}
+        </button>
+      )}
 
       <label className="field">
         <span>{t('yourName')}</span>

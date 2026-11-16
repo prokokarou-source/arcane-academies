@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ACADEMIES, type BotLevel } from '@arcane/engine';
 import type { LobbySeat } from '@arcane/protocol';
 import { useSound } from '../audio/context';
@@ -19,8 +19,18 @@ export function Lobby(props: { onFriends?: () => void } = {}) {
   const { lobby, seatId } = useClientState();
   const [botLevel, setBotLevel] = useState<BotLevel>('normal');
   const [copied, setCopied] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+  const startsAt = lobby?.startsAt ?? null;
+  useEffect(() => {
+    if (startsAt === null) return;
+    setNow(Date.now());
+    const id = setInterval(() => setNow(Date.now()), 500);
+    return () => clearInterval(id);
+  }, [startsAt]);
   if (!lobby) return null;
-  const isHost = lobby.hostId === seatId;
+  // During a quick-match countdown the lobby runs itself: no host controls.
+  const counting = startsAt !== null;
+  const isHost = lobby.hostId === seatId && !counting;
   const taken = (s: LobbySeat) => new Set(lobby.seats.filter((x) => x.id !== s.id && x.academyId).map((x) => x.academyId));
 
   const link = inviteLink(lobby.code, location, typeof __LAN_ORIGIN__ === 'string' ? __LAN_ORIGIN__ : null);
@@ -38,14 +48,28 @@ export function Lobby(props: { onFriends?: () => void } = {}) {
 
   return (
     <main className="screen lobby">
-      <header className="lobby-head">
-        <span className="muted">{t('roomCode')}</span>
-        <strong className="code">{lobby.code}</strong>
-        <button onClick={() => (sound('tap'), share())}>{copied ? t('linkCopied') : t('shareLink')}</button>
-        <span className="muted small center">
-          {t('inviteHint')} <span className="invite">{link}</span>
-        </span>
-      </header>
+      {lobby.quick ? (
+        <header className="lobby-head">
+          <strong>{t('quickMatch')}</strong>
+          {counting && (
+            <>
+              <span className="deadline" role="timer">
+                {t('quickStartsIn', { n: Math.max(0, Math.ceil((startsAt - now) / 1000)) })}
+              </span>
+              <span className="muted small center">{t('quickFill')}</span>
+            </>
+          )}
+        </header>
+      ) : (
+        <header className="lobby-head">
+          <span className="muted">{t('roomCode')}</span>
+          <strong className="code">{lobby.code}</strong>
+          <button onClick={() => (sound('tap'), share())}>{copied ? t('linkCopied') : t('shareLink')}</button>
+          <span className="muted small center">
+            {t('inviteHint')} <span className="invite">{link}</span>
+          </span>
+        </header>
+      )}
 
       <ul className="seats">
         {lobby.seats.map((s) => {
@@ -71,7 +95,7 @@ export function Lobby(props: { onFriends?: () => void } = {}) {
                     ))}
                   </select>
                 )}
-                {isHost && !mine && (
+                {isHost && !mine && !(lobby.quick && s.kind === 'human') && (
                   <button className="link danger" aria-label={`${t('remove')} ${s.name}`} onClick={() => client.removeSeat(s.id)}>
                     ✕
                   </button>
@@ -151,7 +175,7 @@ export function Lobby(props: { onFriends?: () => void } = {}) {
           </button>
         </section>
       ) : (
-        <p className="muted center">{t('waitingHost')}</p>
+        !counting && <p className="muted center">{t('waitingHost')}</p>
       )}
 
       {props.onFriends && <button onClick={props.onFriends}>{t('inviteFriends')}</button>}

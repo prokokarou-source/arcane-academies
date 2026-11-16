@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ACADEMIES, type BotLevel } from '@arcane/engine';
-import { MAX_NAME } from '@arcane/protocol';
+import { MAX_NAME, QUICK_SIZES, type QuickSize } from '@arcane/protocol';
 import { useSound } from '../audio/context';
 import { useInstall } from '../pwa/context';
 import { useClient, useClientState, usePrefs, useT } from './context';
@@ -17,6 +17,7 @@ export function Home(props: { initialRoom?: string; onRules(): void; onSettings(
   const [code, setCode] = useState((props.initialRoom ?? '').toUpperCase());
   const [bots, setBots] = useState(3);
   const [level, setLevel] = useState<BotLevel>('normal');
+  const [quickSize, setQuickSize] = useState<QuickSize>(null);
   const online = friends?.friends.filter((f) => f.online).length ?? 0;
   const requests = friends?.incoming.length ?? 0;
   const install = useInstall();
@@ -64,6 +65,37 @@ export function Home(props: { initialRoom?: string; onRules(): void; onSettings(
           <input aria-label={t('yourName')} value={name} maxLength={MAX_NAME} autoComplete="nickname" onChange={(e) => setName(e.target.value)} />
         </label>
       )}
+
+      <section className="panel">
+        <div className="row">
+          <label className="field small">
+            <span>{t('quickSize')}</span>
+            <select
+              aria-label={t('quickSize')}
+              value={quickSize ?? 'any'}
+              onChange={(e) => setQuickSize(e.target.value === 'any' ? null : (Number(e.target.value) as QuickSize))}
+            >
+              <option value="any">{t('quickAny')}</option>
+              {QUICK_SIZES.map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            className="primary"
+            disabled={!nameOk}
+            onClick={() => {
+              remember();
+              client.quickMatch(trimmed, quickSize);
+            }}
+          >
+            {t('quickMatch')}
+          </button>
+        </div>
+        <p className="muted small">{t('quickHint')}</p>
+      </section>
 
       <section className="panel">
         <button

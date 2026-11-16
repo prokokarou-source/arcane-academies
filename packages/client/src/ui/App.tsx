@@ -6,6 +6,7 @@ import { Friends } from './Friends';
 import { Game } from './Game';
 import { Home } from './Home';
 import { Lobby } from './Lobby';
+import { QuickMatch } from './QuickMatch';
 import { Rules } from './Rules';
 import { Settings } from './Settings';
 
@@ -36,6 +37,7 @@ export function App({ initialRoom }: { initialRoom?: string }) {
   else if (page === 'friends' && !state.game) screen = <Friends onBack={() => setPage('home')} onAccount={() => setPage('account')} />;
   else if (state.game) screen = <Game onSettings={() => setPage('settings')} onRules={() => setPage('rules')} />;
   else if (state.lobby) screen = <Lobby onFriends={state.account ? () => setPage('friends') : undefined} />;
+  else if (state.quick) screen = <QuickMatch />;
   else if (state.restoring)
     screen = (
       <main className="screen center">

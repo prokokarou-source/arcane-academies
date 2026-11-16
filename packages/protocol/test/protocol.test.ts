@@ -102,3 +102,30 @@ describe('account messages', () => {
     expect(parseClientMessage(JSON.stringify({ t: 'auth' }))).toBeNull();
   });
 });
+
+describe('quick match messages', () => {
+  it('round-trip', () => {
+    const msgs: ClientMessage[] = [
+      { t: 'quickMatch', name: 'Ana', size: 3 },
+      { t: 'quickMatch', name: 'Ana', size: null },
+      { t: 'quickCancel' },
+      { t: 'quickBots' },
+    ];
+    for (const m of msgs) expect(parseClientMessage(encode(m))).toEqual(m);
+    const server: ServerMessage[] = [
+      { t: 'quickQueue', size: null, searching: 2, waitedMs: 1500 },
+      { t: 'quickCancelled' },
+    ];
+    for (const m of server) expect(JSON.parse(encode(m))).toEqual(m);
+  });
+
+  it('rejects a bad size or name', () => {
+    const q = (v: object) => parseClientMessage(JSON.stringify({ t: 'quickMatch', ...v }));
+    expect(q({ name: 'Ana', size: 5 })).toBeNull();
+    expect(q({ name: 'Ana', size: 1 })).toBeNull();
+    expect(q({ name: 'Ana', size: '3' })).toBeNull();
+    expect(q({ name: 'Ana' })).toBeNull();
+    expect(q({ name: ' ', size: 2 })).toBeNull();
+    expect(q({ name: '  Ana ', size: 4 })).toEqual({ t: 'quickMatch', name: 'Ana', size: 4 });
+  });
+});

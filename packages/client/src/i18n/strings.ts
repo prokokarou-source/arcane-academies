@@ -264,6 +264,19 @@ export const en = {
   sfx: 'Sound effects',
   haptics: 'Haptics',
   saved: 'Saved',
+  // quick match
+  quickMatch: 'Quick match',
+  quickHint: 'Play with others who are searching right now. No code needed.',
+  quickSize: 'Players',
+  quickAny: 'Any',
+  quickSearching: 'Looking for players…',
+  quickWaited: 'Waiting {time}',
+  quickCount: 'Players searching: {n}',
+  quickAlone: 'No one else is searching right now.',
+  quickBots: 'Play with bots instead',
+  quickKeep: 'Keep waiting',
+  quickStartsIn: 'The game starts in {n} s',
+  quickFill: 'Empty seats get Normal bots.',
 } as const;
 
 export type StringKey = keyof typeof en;

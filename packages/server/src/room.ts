@@ -83,6 +83,10 @@ export class Room {
   private timerSeq = -1;
   private turnTimer: unknown = null;
   private deadline: number | null = null;
+  /** Made by quick match: the lobby starts itself and nobody can remove another player. */
+  private quick = false;
+  private startsAt: number | null = null;
+  private startTimer: unknown = null;
 
   constructor(
     readonly code: string,
@@ -183,10 +187,27 @@ export class Room {
     }
   }
 
+  /** Quick match: start by itself after `ms`, filling empty seats up to `size` with Normal bots. */
+  startCountdown(ms: number, size: number): void {
+    if (this.closed || this.phase !== 'lobby') return;
+    this.quick = true;
+    this.clearStartTimer();
+    this.startsAt = this.clock.now() + ms;
+    this.startTimer = this.clock.setTimer(ms, () => {
+      this.startTimer = null;
+      this.startsAt = null;
+      if (this.closed || this.phase !== 'lobby') return;
+      while (this.members.length < Math.min(size, MAX_SEATS)) this.pushBot('normal');
+      this.begin();
+    });
+    this.broadcast();
+  }
+
   close(reason: CloseReason): void {
     if (this.closed) return;
     this.closed = true;
     this.clearTurnTimer();
+    this.clearStartTimer();
     for (const m of this.members) {
       this.clearGrace(m);
       if (m.conn) m.conn.close(reason);
@@ -200,6 +221,8 @@ export class Room {
   private hostLobby(m: Member, fn: () => void): void {
     if (m.id !== this.hostId) return this.fail(m.conn!, 'not_host', 'Only the host can do that');
     if (this.phase !== 'lobby') return this.fail(m.conn!, 'wrong_phase', 'Only possible in the lobby');
+    // The quick-match countdown runs the lobby: players only pick their academy.
+    if (this.startsAt !== null) return this.fail(m.conn!, 'wrong_phase', 'The game starts by itself');
     fn();
   }
 
@@ -223,6 +246,11 @@ export class Room {
 
   private addBot(host: Member, level: BotLevel): void {
     if (this.members.length >= MAX_SEATS) return this.fail(host.conn!, 'room_full', 'The room is full');
+    this.pushBot(level);
+    this.broadcast();
+  }
+
+  private pushBot(level: BotLevel): void {
     this.members.push({
       id: this.nextSeatId(),
       kind: 'bot',
@@ -234,12 +262,13 @@ export class Room {
       botControlled: false,
       engineSeat: -1,
     });
-    this.broadcast();
   }
 
   private removeSeat(host: Member, seatId: SeatId): void {
     const target = this.members.find((x) => x.id === seatId);
-    if (!target || target === host) return this.fail(host.conn!, 'bad_seat', 'You cannot remove that seat');
+    if (!target || target === host || (this.quick && target.kind === 'human')) {
+      return this.fail(host.conn!, 'bad_seat', 'You cannot remove that seat');
+    }
     this.removeMember(target, 'removed');
   }
 
@@ -304,6 +333,11 @@ export class Room {
   private start(host: Member): void {
     const n = this.members.length;
     if (n < 2 || n > MAX_SEATS) return this.fail(host.conn!, 'seat_count', 'A game needs 2 to 7 seats');
+    this.begin();
+  }
+
+  private begin(): void {
+    const n = this.members.length;
     const seats: SeatConfig[] = this.members.map((m) => ({
       kind: m.kind,
       name: m.name,
@@ -432,6 +466,7 @@ export class Room {
       inviteUrl: `${this.opts.clientUrl}/?room=${this.code}`,
       hostId: this.hostId ?? '',
       settings: { ...this.settings },
+      ...(this.quick ? { quick: true, startsAt: this.startsAt } : {}),
       seats: this.members.map((m) => ({
         id: m.id,
         kind: m.kind,
@@ -462,6 +497,12 @@ export class Room {
   private bind(m: Member, conn: Conn): void {
     m.conn = conn;
     this.byConn.set(conn, m);
+  }
+
+  private clearStartTimer(): void {
+    if (this.startTimer !== null) this.clock.clearTimer(this.startTimer);
+    this.startTimer = null;
+    this.startsAt = null;
   }
 
   private clearGrace(m: Member): void {

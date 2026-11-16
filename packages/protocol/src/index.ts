@@ -42,7 +42,15 @@ export interface LobbyState {
   hostId: SeatId;
   seats: LobbySeat[];
   settings: RoomSettings;
+  /** Quick-match rooms: the game starts by itself at this server time (epoch ms); empty seats get bots. */
+  startsAt?: number | null;
+  /** Made by quick match: strangers, so nobody can remove anybody. */
+  quick?: boolean;
 }
+
+/** Quick match: wanted table size (players incl. bots), or null for any. */
+export type QuickSize = 2 | 3 | 4 | null;
+export const QUICK_SIZES: readonly Exclude<QuickSize, null>[] = [2, 3, 4];
 
 /** Presence of an engine seat during a game. */
 export interface SeatStatus {
@@ -112,7 +120,12 @@ export type ClientMessage =
   | { t: 'settings'; settings: Partial<RoomSettings> }
   | { t: 'start' }
   | { t: 'act'; action: Action }
-  | { t: 'rematch' };
+  | { t: 'rematch' }
+  /** Search for strangers to play with (leaves any room first). */
+  | { t: 'quickMatch'; name: string; size: QuickSize }
+  | { t: 'quickCancel' }
+  /** Stop searching and play right away against Normal bots. */
+  | { t: 'quickBots' };
 
 export type ErrorCode =
   | 'bad_message'
@@ -179,7 +192,11 @@ export type ServerMessage =
   /** A friend came online or went offline. */
   | { t: 'presence'; username: string; online: boolean }
   /** A friend invites me to their room. */
-  | { t: 'invite'; from: string; code: string };
+  | { t: 'invite'; from: string; code: string }
+  /** I am in the quick-match queue: `searching` players are waiting in total (me included). */
+  | { t: 'quickQueue'; size: QuickSize; searching: number; waitedMs: number }
+  /** I left the queue without a match (cancelled). */
+  | { t: 'quickCancelled' };
 
 export function encode(msg: ClientMessage | ServerMessage): string {
   return JSON.stringify(msg);
@@ -282,7 +299,14 @@ function parseObj(m: Obj): ClientMessage | null {
     case 'leave':
     case 'start':
     case 'rematch':
+    case 'quickCancel':
+    case 'quickBots':
       return { t: m.t };
+    case 'quickMatch': {
+      const n = name(m.name);
+      const size = m.size === null || (QUICK_SIZES as readonly unknown[]).includes(m.size) ? (m.size as QuickSize) : undefined;
+      return n && size !== undefined ? { t: 'quickMatch', name: n, size } : null;
+    }
     case 'setSeat': {
       const out: Extract<ClientMessage, { t: 'setSeat' }> = { t: 'setSeat' };
       if (m.seatId !== undefined) {

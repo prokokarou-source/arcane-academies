@@ -50,6 +50,8 @@ const pwa = VitePWA({
     // The health check and anything that is not the app must always reach the server.
     navigateFallbackDenylist: [/^\/health/],
     cleanupOutdatedCaches: true,
+    // Web Push handlers (public/push-sw.js) run inside the generated service worker.
+    importScripts: ['push-sw.js'],
     maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
     runtimeCaching: [
       {

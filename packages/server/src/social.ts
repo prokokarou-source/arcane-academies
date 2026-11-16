@@ -1,6 +1,7 @@
 import { MAX_PASSWORD, MIN_PASSWORD, USERNAME_RE, type ErrorCode, type FriendList, type SocialMessage } from '@arcane/protocol';
 import type { Clock } from './clock';
 import { hashPassword, hashToken, newToken, verifyPassword } from './passwords';
+import { isPushEndpoint, Push, type PushConfig } from './push';
 import type { Conn } from './room';
 import { usernameKey, type Store, type User } from './store';
 
@@ -8,6 +9,8 @@ export interface SocialOptions {
   /** The room code this connection is seated in, if any (for invites). */
   roomOf(conn: Conn): string | null;
   clock: Clock;
+  /** Web Push (VAPID key + sender); push notifications are off without it. */
+  push?: PushConfig | null;
 }
 
 /** Failed logins allowed per username inside the window before further tries are refused. */
@@ -24,7 +27,7 @@ const MESSAGES: Partial<Record<ErrorCode, string>> = {
   not_logged_in: 'Log in first',
   no_user: 'No player with that username',
   not_friends: 'You are not friends yet',
-  friend_offline: 'That friend is offline',
+  friend_offline: 'That friend is offline and has notifications off',
   invite_no_room: 'Join or create a room first',
   busy: 'Still working on your last request',
   unavailable: 'Accounts are unavailable right now',
@@ -41,11 +44,14 @@ export class Social {
   private busy = new WeakSet<Conn>();
   private failures = new Map<string, number[]>();
   private dummyHash: Promise<string> | null = null;
+  readonly push: Push;
 
   constructor(
     private readonly store: Store,
     private readonly opts: SocialOptions,
-  ) {}
+  ) {
+    this.push = new Push(store, opts.push ?? null);
+  }
 
   isOnline(userId: string): boolean {
     return (this.userConns.get(userId)?.size ?? 0) > 0;
@@ -99,6 +105,11 @@ export class Social {
     }
     const me = this.userOf(conn);
     if (!me) return this.fail(conn, 'not_logged_in');
+    if (msg.t === 'pushSubscribe') {
+      if (this.push.enabled && isPushEndpoint(msg.sub.endpoint)) await this.store.addPushSub(me.id, msg.sub);
+      return;
+    }
+    if (msg.t === 'pushUnsubscribe') return this.store.removePushSub(msg.endpoint, me.id);
     const other = await this.store.findUser(msg.username);
     if (!other || other.id === me.id) return this.fail(conn, 'no_user');
     const link = await this.store.link(me.id, other.id);
@@ -106,7 +117,10 @@ export class Social {
       case 'friendRequest':
         // They already asked me: asking back is agreeing.
         if (link && !link.accepted && link.from === other.id) await this.store.accept(other.id, me.id);
-        else if (!link) await this.store.addRequest(me.id, other.id);
+        else if (!link) {
+          await this.store.addRequest(me.id, other.id);
+          this.notify(other.id, { title: 'Friend request', body: `${me.username} wants to be your friend`, url: '/', tag: `friend-${me.username}` });
+        }
         break;
       case 'friendAccept':
         if (link && !link.accepted && link.from === other.id) await this.store.accept(other.id, me.id);
@@ -116,10 +130,22 @@ export class Social {
         break;
       case 'invite': {
         if (!link?.accepted) return this.fail(conn, 'not_friends');
-        if (!this.isOnline(other.id)) return this.fail(conn, 'friend_offline');
         const code = this.opts.roomOf(conn);
         if (!code) return this.fail(conn, 'invite_no_room');
+        const online = this.isOnline(other.id);
         for (const c of this.userConns.get(other.id) ?? []) c.send({ t: 'invite', from: me.username, code });
+        // Also to their devices: the app may be in the background or closed.
+        const pushed = this.push.notify(other.id, {
+          title: `${me.username} invites you`,
+          body: `Tap to join room ${code}`,
+          url: `/?room=${encodeURIComponent(code)}`,
+          tag: `invite-${code}`,
+        });
+        if (online) {
+          pushed.catch((e: Error) => console.error('invite push failed:', e.message));
+          return;
+        }
+        if ((await pushed) === 0) return this.fail(conn, 'friend_offline');
         return;
       }
     }
@@ -167,6 +193,7 @@ export class Social {
   private async enter(conn: Conn, user: User, tokenHash: string, token?: string): Promise<void> {
     this.bind(conn, user, tokenHash);
     conn.send({ t: 'account', username: user.username, ...(token ? { token } : {}) });
+    conn.send({ t: 'pushKey', key: this.push.publicKey });
     conn.send({ t: 'friends', list: await this.friendList(user.id) });
   }
 
@@ -243,6 +270,11 @@ export class Social {
     if (!this.userConns.get(userId)?.size) return;
     const list = await this.friendList(userId);
     for (const c of this.userConns.get(userId) ?? []) c.send({ t: 'friends', list });
+  }
+
+  /** Fire-and-forget push; failures are only logged. */
+  private notify(userId: string, payload: Parameters<Push['notify']>[1]): void {
+    this.push.notify(userId, payload).catch((e: Error) => console.error('push failed:', e.message));
   }
 
   private fail(conn: Conn, code: ErrorCode): void {

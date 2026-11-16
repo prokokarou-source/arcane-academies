@@ -4,7 +4,7 @@
  */
 import type { Action, BotLevel, PlayerView } from '@arcane/engine';
 import { SOCIAL_ERRORS, isSocialMessage } from '@arcane/protocol';
-import type { ClientMessage, ErrorCode, FriendList, LobbyState, RoomSettings, SeatId, ServerMessage } from '@arcane/protocol';
+import type { ClientMessage, ErrorCode, FriendList, LobbyState, PushSub, RoomSettings, SeatId, ServerMessage } from '@arcane/protocol';
 import { termDuels } from '../game/derive';
 import { clearAccountToken, clearSession, loadAccountToken, loadSession, saveAccountToken, saveSession, type Session } from './session';
 
@@ -69,6 +69,8 @@ export interface ClientState {
   invites: Invite[];
   /** The last account or friend error, shown on those screens instead of the room banner. */
   socialError: { code: ErrorCode; message: string } | null;
+  /** The server's push (VAPID) public key once logged in; null when the server has push off. */
+  pushKey: string | null;
 }
 
 const OPEN = 1;
@@ -95,6 +97,7 @@ const INITIAL: ClientState = {
   friends: null,
   invites: [],
   socialError: null,
+  pushKey: null,
 };
 
 export class GameClient {
@@ -245,7 +248,7 @@ export class GameClient {
         if (msg.username === null) {
           this.accountToken = null;
           clearAccountToken(this.deps.storage);
-          this.set({ account: null, accountPending: false, friends: null, invites: [], socialError: null });
+          this.set({ account: null, accountPending: false, friends: null, invites: [], socialError: null, pushKey: null });
         } else {
           if (msg.token) {
             this.accountToken = msg.token;
@@ -256,6 +259,9 @@ export class GameClient {
         return;
       case 'friends':
         this.set({ friends: msg.list });
+        return;
+      case 'pushKey':
+        this.set({ pushKey: msg.key });
         return;
       case 'presence': {
         const list = this.state.friends;
@@ -432,7 +438,16 @@ export class GameClient {
     this.send({ t: 'friendRemove', username });
   }
 
-  /** Invite an online friend to the room I am in. */
+  /** Let the server notify this device (subscription from the browser's PushManager). */
+  savePush(sub: PushSub): void {
+    this.send({ t: 'pushSubscribe', sub });
+  }
+
+  removePush(endpoint: string): void {
+    this.send({ t: 'pushUnsubscribe', endpoint });
+  }
+
+  /** Invite a friend to the room I am in. */
   invite(username: string): void {
     this.set({ socialError: null });
     this.send({ t: 'invite', username });

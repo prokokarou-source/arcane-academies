@@ -13,3 +13,11 @@ services:
       # Neon Postgres connection string for accounts and friends; set it in the Render dashboard.
       - key: DATABASE_URL
         sync: false
+      # Web Push (invite / friend-request notifications). Generate with `npm run vapid`; push is off until all three are set.
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      # Contact for push services, e.g. mailto:you@example.com
+      - key: VAPID_SUBJECT
+        sync: false

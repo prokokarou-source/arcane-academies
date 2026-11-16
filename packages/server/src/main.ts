@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { PgStore } from './pgStore';
+import { pushFromEnv } from './push';
 import { startServer } from './server';
 
 const num = (v: string | undefined, fallback: number) => (v && Number.isFinite(Number(v)) ? Number(v) : fallback);
@@ -20,10 +21,14 @@ if (process.env.DATABASE_URL) {
   await store.init().catch((e: Error) => console.error('database not ready yet:', e.message));
 }
 
+// Web Push for invites and friend requests; off unless all three VAPID_* variables are set.
+const push = pushFromEnv(process.env);
+
 const server = await startServer({
   port,
   host,
   ...(store ? { store } : {}),
+  push,
   ...(staticDir ? { staticDir } : {}),
   manager: {
     clientUrl: process.env.CLIENT_URL ?? 'http://localhost:5173',
@@ -32,7 +37,7 @@ const server = await startServer({
   },
 });
 console.log(
-  `Arcane Academies server listening on :${server.port}${staticDir ? ' (serving the web client)' : ''}; accounts: ${store ? 'database' : 'in memory'}`,
+  `Arcane Academies server listening on :${server.port}${staticDir ? ' (serving the web client)' : ''}; accounts: ${store ? 'database' : 'in memory'}; push: ${push ? 'on' : 'off'}`,
 );
 
 const shutdown = () => {

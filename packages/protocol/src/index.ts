@@ -72,6 +72,12 @@ export interface FriendList {
   outgoing: string[];
 }
 
+/** A browser push subscription (PushSubscription.toJSON()), saved so the server can notify a closed app. */
+export interface PushSub {
+  endpoint: string;
+  keys: { p256dh: string; auth: string };
+}
+
 /** Account and friend messages; handled apart from rooms and never tied to a seat. */
 export type SocialMessage =
   | { t: 'signup'; username: string; password: string }
@@ -83,8 +89,11 @@ export type SocialMessage =
   | { t: 'friendAccept'; username: string }
   /** Decline a request, cancel my own, or unfriend. */
   | { t: 'friendRemove'; username: string }
-  /** Invite an online friend to the room I am in. */
-  | { t: 'invite'; username: string };
+  /** Invite a friend to the room I am in (online, or offline with notifications on). */
+  | { t: 'invite'; username: string }
+  /** Notify this device (logged-in user) about invites and friend requests while the app is closed. */
+  | { t: 'pushSubscribe'; sub: PushSub }
+  | { t: 'pushUnsubscribe'; endpoint: string };
 
 export const SOCIAL_TYPES: readonly SocialMessage['t'][] = [
   'signup',
@@ -95,6 +104,8 @@ export const SOCIAL_TYPES: readonly SocialMessage['t'][] = [
   'friendAccept',
   'friendRemove',
   'invite',
+  'pushSubscribe',
+  'pushUnsubscribe',
 ];
 
 export const isSocialMessage = (m: ClientMessage): m is SocialMessage => (SOCIAL_TYPES as readonly string[]).includes(m.t);
@@ -179,7 +190,9 @@ export type ServerMessage =
   /** A friend came online or went offline. */
   | { t: 'presence'; username: string; online: boolean }
   /** A friend invites me to their room. */
-  | { t: 'invite'; from: string; code: string };
+  | { t: 'invite'; from: string; code: string }
+  /** The server's VAPID public key after login; null when push notifications are off on the server. */
+  | { t: 'pushKey'; key: string | null };
 
 export function encode(msg: ClientMessage | ServerMessage): string {
   return JSON.stringify(msg);
@@ -254,6 +267,13 @@ function settings(v: unknown): Partial<RoomSettings> | null {
 /** Shape only (strings of sane length); the server checks the username and password rules. */
 const isUser = (v: unknown): v is string => isStr(v, 64);
 const isPass = (v: unknown): v is string => typeof v === 'string' && v.length <= MAX_PASSWORD;
+const isEndpoint = (v: unknown): v is string => isStr(v, 2048) && v.startsWith('https://');
+
+function pushSub(v: unknown): PushSub | null {
+  if (!isObj(v) || !isEndpoint(v.endpoint) || !isObj(v.keys)) return null;
+  const { p256dh, auth } = v.keys;
+  return isStr(p256dh, 256) && isStr(auth, 64) ? { endpoint: v.endpoint, keys: { p256dh, auth } } : null;
+}
 
 function parseObj(m: Obj): ClientMessage | null {
   switch (m.t) {
@@ -269,6 +289,12 @@ function parseObj(m: Obj): ClientMessage | null {
     case 'friendRemove':
     case 'invite':
       return isUser(m.username) ? { t: m.t, username: m.username } : null;
+    case 'pushSubscribe': {
+      const sub = pushSub(m.sub);
+      return sub ? { t: 'pushSubscribe', sub } : null;
+    }
+    case 'pushUnsubscribe':
+      return isEndpoint(m.endpoint) ? { t: 'pushUnsubscribe', endpoint: m.endpoint } : null;
     case 'create': {
       const n = name(m.name);
       return n ? { t: 'create', name: n } : null;

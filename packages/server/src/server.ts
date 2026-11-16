@@ -7,6 +7,7 @@ import { RoomManager, type ManagerOptions } from './manager';
 import type { Conn } from './room';
 import { Social } from './social';
 import { staticHandler } from './static';
+import type { PushConfig } from './push';
 import { MemoryStore, type Store } from './store';
 
 export interface ServerOptions {
@@ -19,6 +20,8 @@ export interface ServerOptions {
   staticDir?: string;
   /** Accounts and friends; in memory when not given. Closed together with the server. */
   store?: Store;
+  /** Web Push settings (from the VAPID env vars); notifications are off when missing. */
+  push?: PushConfig | null;
 }
 
 export interface RunningServer {
@@ -50,7 +53,7 @@ function wrap(ws: WebSocket): Conn {
 export function startServer(opts: ServerOptions): Promise<RunningServer> {
   const manager = new RoomManager(opts.manager ?? {}, realClock);
   const store = opts.store ?? new MemoryStore();
-  const social = new Social(store, { roomOf: (c) => manager.codeOf(c), clock: realClock });
+  const social = new Social(store, { roomOf: (c) => manager.codeOf(c), clock: realClock, push: opts.push ?? null });
   const serveStatic = opts.staticDir ? staticHandler(opts.staticDir) : null;
   const http = createServer((req, res) => {
     if (req.method === 'GET' && req.url === '/health') {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { encode, parseClientMessage, MAX_MESSAGE_BYTES } from '../src/index';
+import { encode, isSocialMessage, parseClientMessage, MAX_MESSAGE_BYTES } from '../src/index';
 import type { ClientMessage, ServerMessage } from '../src/index';
 
 const plan = { buyLeft: { ink: 1 }, buyRight: {}, coinsToLeft: 2, coinsToRight: 0, coinsToBank: 0, free: false };
@@ -100,5 +100,25 @@ describe('account messages', () => {
     expect(parseClientMessage(JSON.stringify({ t: 'login', username: 'Ana', password: 'x'.repeat(129) }))).toBeNull();
     expect(parseClientMessage(JSON.stringify({ t: 'invite', username: 7 }))).toBeNull();
     expect(parseClientMessage(JSON.stringify({ t: 'auth' }))).toBeNull();
+  });
+});
+
+describe('push messages', () => {
+  const sub = { endpoint: 'https://push.example.com/abc', keys: { p256dh: 'BPk', auth: 'aut' } };
+
+  it('round-trip, are social, and drop extra fields', () => {
+    for (const m of [{ t: 'pushSubscribe', sub }, { t: 'pushUnsubscribe', endpoint: sub.endpoint }] as ClientMessage[]) {
+      expect(parseClientMessage(encode(m))).toEqual(m);
+      expect(isSocialMessage(m)).toBe(true);
+    }
+    const extra = { t: 'pushSubscribe', sub: { ...sub, expirationTime: null, keys: { ...sub.keys, x: 1 } } };
+    expect(parseClientMessage(JSON.stringify(extra))).toEqual({ t: 'pushSubscribe', sub });
+  });
+
+  it('rejects non-https endpoints and missing keys', () => {
+    expect(parseClientMessage(JSON.stringify({ t: 'pushSubscribe', sub: { ...sub, endpoint: 'http://push.example.com/a' } }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ t: 'pushSubscribe', sub: { endpoint: sub.endpoint } }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ t: 'pushSubscribe', sub: { ...sub, keys: { p256dh: 'x' } } }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ t: 'pushUnsubscribe', endpoint: 'file:///etc' }))).toBeNull();
   });
 });

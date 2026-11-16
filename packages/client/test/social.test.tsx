@@ -135,7 +135,7 @@ describe('account screens', () => {
     expect(h.sock().sent).toContainEqual({ t: 'create', name: 'Ana_7' });
   });
 
-  it('invites an online friend from the lobby', () => {
+  it('invites friends from the lobby, offline ones too (reached by notification)', () => {
     const h = renderApp();
     act(() => {
       h.sock().receive({ t: 'account', username: 'Ana' });
@@ -145,10 +145,13 @@ describe('account screens', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'Invite friends' }));
     const invites = screen.getAllByRole('button', { name: 'Invite' });
-    expect(invites).toHaveLength(1); // offline friends cannot be invited
+    // Offline friends can be invited too: the server pushes a notification or answers friend_offline.
+    expect(invites).toHaveLength(2);
     fireEvent.click(invites[0]);
     expect(h.sock().sent).toContainEqual({ t: 'invite', username: 'Bob' });
     expect(screen.getByRole('button', { name: 'Invited' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Invite' }));
+    expect(h.sock().sent).toContainEqual({ t: 'invite', username: 'Cyd' });
   });
 
   it('a guest lobby has no invite button', () => {

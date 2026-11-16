@@ -1,10 +1,13 @@
 import { createContext, useContext, useSyncExternalStore, type ReactNode } from 'react';
 import type { ConnectivityStore, InstallState, InstallStore, UpdateStore } from './install';
+import type { PushState, PushStore } from './push';
 
 export interface Pwa {
   install: InstallStore;
   update: UpdateStore;
   online: ConnectivityStore;
+  /** Notifications; absent where the app has no service worker (dev server, tests). */
+  push?: PushStore;
 }
 
 const PwaContext = createContext<Pwa | null>(null);
@@ -36,4 +39,13 @@ export function useUpdate(): { ready: boolean; apply(): void } {
 export function useOnline(): boolean {
   const pwa = useContext(PwaContext);
   return useSyncExternalStore(pwa?.online.subscribe ?? noop, pwa?.online.getState ?? (() => true));
+}
+
+const NO_PUSH: PushState = { status: 'unsupported', busy: false };
+
+/** Notification switch state; 'unsupported' without a push store. */
+export function usePush(): PushState & { store: PushStore | null } {
+  const pwa = useContext(PwaContext);
+  const state = useSyncExternalStore(pwa?.push?.subscribe ?? noop, pwa?.push?.getState ?? (() => NO_PUSH));
+  return { ...state, store: pwa?.push ?? null };
 }

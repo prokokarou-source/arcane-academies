@@ -1,6 +1,7 @@
 import pg from 'pg';
+import type { PushSub } from '@arcane/protocol';
 import type { FriendLink, FriendRow, Store, StoredUser, User } from './store';
-import { usernameKey } from './store';
+import { MAX_PUSH_SUBS, usernameKey } from './store';
 
 /** Run on every start; each statement is safe to repeat. */
 const MIGRATIONS = [
@@ -25,6 +26,14 @@ const MIGRATIONS = [
      primary key (requester, addressee)
    )`,
   `create index if not exists friendships_addressee on friendships(addressee)`,
+  `create table if not exists push_subscriptions (
+     endpoint text primary key,
+     user_id bigint not null references users(id) on delete cascade,
+     p256dh text not null,
+     auth text not null,
+     created_at timestamptz not null default now()
+   )`,
+  `create index if not exists push_subscriptions_user on push_subscriptions(user_id)`,
 ];
 
 const user = (r: { id: string | number; username: string }): User => ({ id: String(r.id), username: r.username });
@@ -125,5 +134,28 @@ export class PgStore implements Store {
       [userId],
     );
     return r.rows.map((row) => ({ other: user(row), accepted: row.accepted, outgoing: row.outgoing }));
+  }
+
+  async addPushSub(userId: string, sub: PushSub): Promise<void> {
+    await this.q(
+      `insert into push_subscriptions (endpoint, user_id, p256dh, auth) values ($1, $2, $3, $4)
+       on conflict (endpoint) do update set user_id = excluded.user_id, p256dh = excluded.p256dh, auth = excluded.auth, created_at = now()`,
+      [sub.endpoint, userId, sub.keys.p256dh, sub.keys.auth],
+    );
+    await this.q(
+      `delete from push_subscriptions where user_id = $1 and endpoint not in
+       (select endpoint from push_subscriptions where user_id = $1 order by created_at desc limit $2)`,
+      [userId, MAX_PUSH_SUBS],
+    );
+  }
+
+  async pushSubs(userId: string): Promise<PushSub[]> {
+    const r = await this.q('select endpoint, p256dh, auth from push_subscriptions where user_id = $1', [userId]);
+    return r.rows.map((row) => ({ endpoint: row.endpoint, keys: { p256dh: row.p256dh, auth: row.auth } }));
+  }
+
+  async removePushSub(endpoint: string, userId?: string): Promise<void> {
+    if (userId === undefined) await this.q('delete from push_subscriptions where endpoint = $1', [endpoint]);
+    else await this.q('delete from push_subscriptions where endpoint = $1 and user_id = $2', [endpoint, userId]);
   }
 }

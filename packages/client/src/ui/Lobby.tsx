@@ -7,6 +7,7 @@ import { LEVELS } from './Home';
 import { Crest } from './Icon';
 import { inviteLink } from '../net/url';
 import { ReactionBubble, ReactionButton, useReactions } from './Reactions';
+import { PlayerMenu } from './Safety';
 
 const GRACE = [10_000, 30_000, 60_000, 120_000, 300_000, 600_000];
 const TIMERS = [30_000, 60_000, 90_000, 120_000, 300_000];
@@ -90,6 +91,7 @@ export function Lobby(props: { onFriends?: () => void } = {}) {
                 </span>
                 {mine && <span className="tag">{t('you')}</span>}
                 {mine && <ReactionButton />}
+                {!mine && s.username && <PlayerMenu username={s.username} />}
                 {s.id === lobby.hostId && <span className="tag">{t('host')}</span>}
                 {s.kind === 'bot' && !isHost && <span className="tag">{`${t('bot')} · ${t(`level_${s.botLevel ?? 'normal'}`)}`}</span>}
                 {isHost && s.kind === 'bot' && (

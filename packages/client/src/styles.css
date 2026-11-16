@@ -609,3 +609,13 @@ button.built-chip {
 .flourish { display: inline-block; animation: duel-flare 0.4s ease-out both; animation-delay: calc(120ms + var(--i, 0) * 90ms); }
 @keyframes duel-in { from { transform: translateY(10px); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes duel-flare { 0% { transform: scale(0.5); opacity: 0; } 60% { transform: scale(1.25); opacity: 1; } 100% { transform: none; } }
+/* Block, report and recovery code */
+.pm-btn { min-width: 32px; padding: 0 6px; font-size: 1.2rem; line-height: 1; color: var(--muted); }
+.pm-sheet .row.stretch > button { flex: 1; }
+.pm-report { display: flex; flex-direction: column; gap: var(--s3); }
+.pm-report textarea { resize: vertical; font: inherit; }
+.recovery-code {
+  display: block; text-align: center; font-family: ui-monospace, "Cascadia Mono", Menlo, monospace; font-size: 1.35rem; letter-spacing: 0.08em;
+  padding: 12px 10px; border-radius: 12px; color: var(--gold); background: rgba(232, 181, 74, 0.1); border: 1px dashed rgba(232, 181, 74, 0.55);
+  user-select: all; overflow-wrap: anywhere;
+}

@@ -4,7 +4,21 @@
  */
 import type { Action, BotLevel, PlayerView } from '@arcane/engine';
 import { SOCIAL_ERRORS, isSocialMessage } from '@arcane/protocol';
-import type { ClientMessage, ErrorCode, FriendList, LeaderRow, LobbyState, Profile, PushSub, QuickSize, ReactionId, RoomSettings, SeatId, ServerMessage } from '@arcane/protocol';
+import type {
+  ClientMessage,
+  ErrorCode,
+  FriendList,
+  LeaderRow,
+  LobbyState,
+  Profile,
+  PushSub,
+  QuickSize,
+  ReactionId,
+  ReportReason,
+  RoomSettings,
+  SeatId,
+  ServerMessage,
+} from '@arcane/protocol';
 import { termDuels } from '../game/derive';
 import { LocalGame, loadLocal, type LocalDeps } from './local';
 import { clearAccountToken, clearSession, loadAccountToken, loadSession, saveAccountToken, saveSession, type Session } from './session';
@@ -95,6 +109,12 @@ export interface ClientState {
   passwordChanged: boolean;
   /** The server's push (VAPID) public key once logged in; null when the server has push off. */
   pushKey: string | null;
+  /** Usernames I blocked (null until logged in). */
+  blocked: string[] | null;
+  /** A new recovery code to show once, until the player says it is saved. */
+  recoveryCode: string | null;
+  /** The username my last report was about, once the server saved it. */
+  reported: string | null;
 }
 
 const OPEN = 1;
@@ -131,6 +151,9 @@ const INITIAL: ClientState = {
   leaderboard: null,
   passwordChanged: false,
   pushKey: null,
+  blocked: null,
+  recoveryCode: null,
+  reported: null,
 };
 
 export class GameClient {
@@ -297,7 +320,18 @@ export class GameClient {
         if (msg.username === null) {
           this.accountToken = null;
           clearAccountToken(this.deps.storage);
-          this.set({ account: null, accountPending: false, friends: null, invites: [], socialError: null, pushKey: null, ...NO_STATS });
+          this.set({
+            account: null,
+            accountPending: false,
+            friends: null,
+            invites: [],
+            socialError: null,
+            pushKey: null,
+            blocked: null,
+            recoveryCode: null,
+            reported: null,
+            ...NO_STATS,
+          });
         } else {
           if (msg.token) {
             this.accountToken = msg.token;
@@ -321,6 +355,18 @@ export class GameClient {
         return;
       case 'pushKey':
         this.set({ pushKey: msg.key });
+        return;
+      case 'blocked': {
+        // Invites from someone I just blocked go away too.
+        const gone = new Set(msg.list.map((u) => u.toLowerCase()));
+        this.set({ blocked: msg.list, invites: this.state.invites.filter((i) => !gone.has(i.from.toLowerCase())) });
+        return;
+      }
+      case 'reported':
+        this.set({ reported: msg.username, socialError: null });
+        return;
+      case 'recoveryCode':
+        this.set({ recoveryCode: msg.code, accountPending: false, socialError: null });
         return;
       case 'presence': {
         const list = this.state.friends;
@@ -611,6 +657,41 @@ export class GameClient {
   deleteAccount(password: string): void {
     this.set({ accountPending: true, socialError: null });
     this.send({ t: 'deleteAccount', password });
+  }
+
+  /** Block an account: no requests, invites or reactions from it, never quick-matched together. */
+  block(username: string): void {
+    this.send({ t: 'block', username });
+  }
+
+  unblock(username: string): void {
+    this.send({ t: 'unblock', username });
+  }
+
+  report(username: string, reason: ReportReason, note: string): void {
+    this.set({ reported: null, socialError: null });
+    this.send({ t: 'report', username, reason, note });
+  }
+
+  /** Forgot password: recovery code + new password; logs in and brings a new code. */
+  recover(username: string, code: string, password: string): void {
+    this.set({ accountPending: true, socialError: null });
+    this.send({ t: 'recover', username, code, password });
+  }
+
+  /** A new recovery code for this account (replaces the old one). */
+  createRecoveryCode(password: string): void {
+    this.set({ accountPending: true, socialError: null });
+    this.send({ t: 'createRecoveryCode', password });
+  }
+
+  /** The player saved the code: stop showing it. */
+  clearRecoveryCode(): void {
+    this.set({ recoveryCode: null });
+  }
+
+  clearReported(): void {
+    this.set({ reported: null });
   }
 
   clearSocialError(): void {

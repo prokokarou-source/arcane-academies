@@ -1,4 +1,4 @@
-import type { PushSub } from '@arcane/protocol';
+import type { PushSub, ReportReason } from '@arcane/protocol';
 
 /**
  * Where accounts, login sessions and friendships live.
@@ -13,6 +13,22 @@ export interface User {
 
 export interface StoredUser extends User {
   passHash: string;
+  /** scrypt hash of the recovery code; null when the account has none. */
+  recoveryHash: string | null;
+}
+
+/** A player's report about another account. Names are kept so the row still reads after an account is deleted. */
+export interface Report {
+  reporterId: string;
+  reporter: string;
+  targetId: string;
+  target: string;
+  reason: ReportReason;
+  note: string;
+  /** The room the reporter was in, if any. */
+  roomCode: string | null;
+  /** Epoch ms. */
+  at: number;
 }
 
 /** One friendship row: `from` asked `to`; accepted once `to` agreed. */
@@ -86,6 +102,18 @@ export interface Store {
   pushSubs(userId: string): Promise<PushSub[]>;
   /** Forget a subscription; with `userId`, only if it is that user's. */
   removePushSub(endpoint: string, userId?: string): Promise<void>;
+  /** Replace the user's recovery code hash (null removes it). */
+  setRecoveryHash(userId: string, hash: string | null): Promise<void>;
+  /** `blocker` blocks `blocked` (repeating is harmless); any friendship between them is removed. */
+  addBlock(blocker: string, blocked: string): Promise<void>;
+  removeBlock(blocker: string, blocked: string): Promise<void>;
+  /** The accounts this user blocked. */
+  blocks(userId: string): Promise<User[]>;
+  /** True when either user blocked the other. */
+  blockedEither(a: string, b: string): Promise<boolean>;
+  addReport(r: Report): Promise<void>;
+  /** Newest first. */
+  recentReports(limit: number): Promise<Report[]>;
 }
 
 /** Devices kept per user; the oldest is dropped beyond this. */
@@ -101,6 +129,8 @@ export class MemoryStore implements Store {
   private results: GameRecord[] = [];
   /** By endpoint, in insertion order (oldest first). */
   private push = new Map<string, { userId: string; sub: PushSub }>();
+  private blockRows: { blocker: string; blocked: string }[] = [];
+  private reports: Report[] = [];
   private nextId = 1;
 
   async init(): Promise<void> {}
@@ -109,7 +139,7 @@ export class MemoryStore implements Store {
   async createUser(username: string, passHash: string): Promise<User | null> {
     const key = usernameKey(username);
     if (this.byKey.has(key)) return null;
-    const u: StoredUser = { id: String(this.nextId++), username, passHash };
+    const u: StoredUser = { id: String(this.nextId++), username, passHash, recoveryHash: null };
     this.users.set(u.id, u);
     this.byKey.set(key, u.id);
     return { id: u.id, username };
@@ -180,6 +210,7 @@ export class MemoryStore implements Store {
     this.links = this.links.filter((x) => x.from !== userId && x.to !== userId);
     this.results = this.results.filter((r) => r.userId !== userId);
     for (const [e, x] of this.push) if (x.userId === userId) this.push.delete(e);
+    this.blockRows = this.blockRows.filter((b) => b.blocker !== userId && b.blocked !== userId);
   }
 
   async recordResult(r: GameRecord): Promise<void> {
@@ -222,5 +253,43 @@ export class MemoryStore implements Store {
   async removePushSub(endpoint: string, userId?: string): Promise<void> {
     const x = this.push.get(endpoint);
     if (x && (userId === undefined || x.userId === userId)) this.push.delete(endpoint);
+  }
+
+  async setRecoveryHash(userId: string, hash: string | null): Promise<void> {
+    const u = this.users.get(userId);
+    if (u) u.recoveryHash = hash;
+  }
+
+  async addBlock(blocker: string, blocked: string): Promise<void> {
+    if (!this.users.has(blocker) || !this.users.has(blocked)) return;
+    await this.removeLink(blocker, blocked);
+    if (!this.blockRows.some((b) => b.blocker === blocker && b.blocked === blocked)) this.blockRows.push({ blocker, blocked });
+  }
+
+  async removeBlock(blocker: string, blocked: string): Promise<void> {
+    this.blockRows = this.blockRows.filter((b) => !(b.blocker === blocker && b.blocked === blocked));
+  }
+
+  async blocks(userId: string): Promise<User[]> {
+    return this.blockRows
+      .filter((b) => b.blocker === userId)
+      .map((b) => this.users.get(b.blocked)!)
+      .map((u) => ({ id: u.id, username: u.username }));
+  }
+
+  async blockedEither(a: string, b: string): Promise<boolean> {
+    return this.blockRows.some((x) => (x.blocker === a && x.blocked === b) || (x.blocker === b && x.blocked === a));
+  }
+
+  async addReport(r: Report): Promise<void> {
+    this.reports.push({ ...r });
+  }
+
+  async recentReports(limit: number): Promise<Report[]> {
+    return this.reports
+      .slice()
+      .reverse()
+      .slice(0, limit)
+      .map((r) => ({ ...r }));
   }
 }

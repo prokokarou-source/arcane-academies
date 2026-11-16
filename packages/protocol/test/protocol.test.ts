@@ -185,3 +185,52 @@ describe('push messages', () => {
     expect(parseClientMessage(JSON.stringify({ t: 'pushUnsubscribe', endpoint: 'file:///etc' }))).toBeNull();
   });
 });
+
+describe('block, report and recovery messages', () => {
+  it('round-trip and are recognised as social', () => {
+    const msgs: ClientMessage[] = [
+      { t: 'block', username: 'Bob' },
+      { t: 'unblock', username: 'Bob' },
+      { t: 'report', username: 'Bob', reason: 'harassment', note: 'rude in chat' },
+      { t: 'report', username: 'Bob', reason: 'cheating', note: '' },
+      { t: 'recover', username: 'Ana', code: 'ABCD-EFGH-JKMN-PQRS', password: 'secret9' },
+      { t: 'createRecoveryCode', password: 'secret1' },
+    ];
+    for (const m of msgs) {
+      expect(parseClientMessage(encode(m))).toEqual(m);
+      expect(isSocialMessage(m)).toBe(true);
+    }
+  });
+
+  it('defaults and trims the report note, and rejects malformed ones', () => {
+    expect(parseClientMessage(JSON.stringify({ t: 'report', username: 'Bob', reason: 'name' }))).toEqual({
+      t: 'report',
+      username: 'Bob',
+      reason: 'name',
+      note: '',
+    });
+    expect(parseClientMessage(JSON.stringify({ t: 'report', username: 'Bob', reason: 'other', note: '  hi ' }))).toMatchObject({ note: 'hi' });
+    expect(parseClientMessage(JSON.stringify({ t: 'report', username: 'Bob', reason: 'spam', note: '' }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ t: 'report', username: 'Bob', reason: 'other', note: 'x'.repeat(201) }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ t: 'report', username: 'Bob', reason: 'other', note: 5 }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ t: 'block' }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ t: 'recover', username: 'Ana', code: '', password: 'secret9' }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ t: 'recover', username: 'Ana', code: 'A'.repeat(65), password: 'secret9' }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ t: 'createRecoveryCode' }))).toBeNull();
+  });
+
+  it('normalizes recovery codes typed with spaces, dashes or lower case', async () => {
+    const { normalizeRecoveryCode, RECOVERY_ALPHABET } = await import('../src/index');
+    expect(normalizeRecoveryCode(' abcd-efgh jkmn-pqrs ')).toBe('ABCDEFGHJKMNPQRS');
+    expect(RECOVERY_ALPHABET).not.toMatch(/[01OIL]/);
+  });
+
+  it('server messages survive JSON', () => {
+    const msgs: ServerMessage[] = [
+      { t: 'blocked', list: ['Bob'] },
+      { t: 'reported', username: 'Bob' },
+      { t: 'recoveryCode', code: 'ABCD-EFGH-JKMN-PQRS' },
+    ];
+    for (const m of msgs) expect(JSON.parse(encode(m))).toEqual(m);
+  });
+});

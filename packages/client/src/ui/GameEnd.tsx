@@ -3,6 +3,7 @@ import { cardDef, type ScoreBreakdown, type ScoreCategory, type ScoreItem } from
 import type { GameResult, SeatStatus } from '@arcane/protocol';
 import { useClient, useClientState, useT, type T } from './context';
 import { FAMILY_COLOR } from './Family';
+import { PlayerMenu } from './Safety';
 
 const CATS = ['duels', 'coins', 'tower', 'lore', 'trade', 'research', 'patrons', 'total'] as const satisfies readonly (keyof ScoreBreakdown)[];
 const ITEM_ORDER: ScoreCategory[] = ['duels', 'coins', 'tower', 'lore', 'trade', 'patrons', 'research'];
@@ -101,6 +102,7 @@ export function GameEnd(props: { me: number; result: GameResult; seats: SeatStat
                         {name(s.seat)}
                       </button>
                       {seats[s.seat]?.kind === 'archmage' && <span className="muted small">{` (${t('cantWin')})`}</span>}
+                      {s.seat !== me && seats[s.seat]?.username && <PlayerMenu username={seats[s.seat].username!} />}
                     </td>
                     {CATS.map((c) => (
                       <td key={c}>{s[c]}</td>

@@ -3,6 +3,7 @@ import type { LeaderRow } from '@arcane/protocol';
 import { USERNAME_RE } from '@arcane/protocol';
 import { useClient, useClientState, useT } from './context';
 import { PushToggle } from './PushToggle';
+import { PlayerMenu } from './Safety';
 import { ScreenHead } from './ScreenHead';
 
 /** Friend list with online status, requests, and (inside a lobby) invites. */
@@ -92,6 +93,7 @@ export function Friends(props: { onBack(): void; onAccount(): void }) {
                       <button className="link danger" onClick={() => client.removeFriend(u)}>
                         {t('decline')}
                       </button>
+                      <PlayerMenu username={u} />
                     </div>
                   </li>
                 ))}
@@ -125,6 +127,7 @@ export function Friends(props: { onBack(): void; onAccount(): void }) {
                   >
                     ✕
                   </button>
+                  <PlayerMenu username={f.username} />
                 </div>
               </li>
             ))}

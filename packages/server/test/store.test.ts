@@ -37,7 +37,7 @@ function contract(name: string, make: () => Store) {
       const ana = await store.createUser(n('Ana'), 'h1');
       expect(ana).toEqual({ id: expect.any(String), username: n('Ana') });
       expect(await store.createUser(n('ANA'), 'h2')).toBeNull();
-      expect(await store.findUser(n('ana'))).toEqual({ ...ana, passHash: 'h1' });
+      expect(await store.findUser(n('ana'))).toEqual({ ...ana, passHash: 'h1', recoveryHash: null });
       expect(await store.findUser(n('nobody'))).toBeNull();
     });
 
@@ -134,6 +134,47 @@ function contract(name: string, make: () => Store) {
       const kept = (await store.pushSubs(gi.id)).map((s) => s.endpoint);
       expect(kept).toHaveLength(MAX_PUSH_SUBS);
       expect(kept).not.toContain(`https://push.example.com/${uniq}/g0`);
+    });
+
+    it('stores and clears a recovery code hash', async () => {
+      const rc = (await store.createUser(n('Rc'), 'h'))!;
+      await store.setRecoveryHash(rc.id, 'scrypt$x');
+      expect((await store.findUser(n('Rc')))?.recoveryHash).toBe('scrypt$x');
+      await store.setRecoveryHash(rc.id, null);
+      expect((await store.findUser(n('Rc')))?.recoveryHash).toBeNull();
+    });
+
+    it('blocks one way, removes the friendship, and forgets blocks with the account', async () => {
+      const ja = (await store.createUser(n('Ja'), 'h'))!;
+      const ke = (await store.createUser(n('Ke'), 'h'))!;
+      await store.addRequest(ja.id, ke.id);
+      await store.accept(ja.id, ke.id);
+      await store.addBlock(ke.id, ja.id);
+      await store.addBlock(ke.id, ja.id);
+      expect(await store.link(ja.id, ke.id)).toBeNull();
+      expect(await store.blocks(ke.id)).toEqual([{ id: ja.id, username: n('Ja') }]);
+      expect(await store.blocks(ja.id)).toEqual([]);
+      expect(await store.blockedEither(ja.id, ke.id)).toBe(true);
+      expect(await store.blockedEither(ke.id, ja.id)).toBe(true);
+      await store.removeBlock(ke.id, ja.id);
+      expect(await store.blockedEither(ja.id, ke.id)).toBe(false);
+      await store.addBlock(ja.id, ke.id);
+      await store.deleteUser(ke.id);
+      expect(await store.blocks(ja.id)).toEqual([]);
+    });
+
+    it('keeps reports newest first, even after the accounts are gone', async () => {
+      const lu = (await store.createUser(n('Lu'), 'h'))!;
+      const mo = (await store.createUser(n('Mo'), 'h'))!;
+      const base = { reporterId: lu.id, reporter: n('Lu'), targetId: mo.id, target: n('Mo'), note: '', roomCode: null };
+      await store.addReport({ ...base, reason: 'name', at: 1_000 });
+      await store.addReport({ ...base, reason: 'cheating', note: 'odd', roomCode: 'WAND-42', at: 2_000 });
+      await store.deleteUser(mo.id);
+      const mine = (await store.recentReports(500)).filter((r) => r.reporter === n('Lu'));
+      expect(mine.map((r) => [r.reason, r.target, r.note, r.roomCode, r.at])).toEqual([
+        ['cheating', n('Mo'), 'odd', 'WAND-42', 2_000],
+        ['name', n('Mo'), '', null, 1_000],
+      ]);
     });
   });
 }

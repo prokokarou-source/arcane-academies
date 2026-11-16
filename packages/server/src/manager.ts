@@ -112,6 +112,12 @@ export class RoomManager {
     }
   }
 
+  /** The account on this connection changed its avatar: its room shows the new one. */
+  refreshAvatar(conn: Conn): void {
+    const room = this.connRoom.get(conn);
+    if (room && !room.closed) room.refreshAvatar(conn);
+  }
+
   /** The transport lost this connection. */
   onClose(conn: Conn): void {
     this.dequeue(conn);

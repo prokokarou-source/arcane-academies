@@ -619,3 +619,23 @@ button.built-chip {
   padding: 12px 10px; border-radius: 12px; color: var(--gold); background: rgba(232, 181, 74, 0.1); border: 1px dashed rgba(232, 181, 74, 0.55);
   user-select: all; overflow-wrap: anywhere;
 }
+
+/* Avatars and play again. */
+.avatar-badge { flex: none; vertical-align: middle; }
+.avatar-ring { fill: color-mix(in srgb, var(--av) 16%, rgba(10, 12, 32, 0.85)); stroke: color-mix(in srgb, var(--av) 60%, transparent); stroke-width: 1; }
+.avatar-default .avatar-ring { fill: rgba(255, 255, 255, 0.05); stroke: rgba(255, 255, 255, 0.18); }
+.neighbor .name, .sheet-head h3, .score-who, .profile-who { display: inline-flex; align-items: center; gap: 0.35em; }
+.id-card .avatar-badge { filter: drop-shadow(0 0 12px color-mix(in srgb, var(--av) 45%, transparent)); }
+.avatar-edit { width: 100%; text-align: left; }
+.avatar-edit summary { cursor: pointer; color: var(--gold); text-align: center; padding: var(--s2) 0; }
+.avatar-picker { display: flex; flex-direction: column; align-items: center; gap: var(--s3); padding-top: var(--s2); }
+.avatar-grid { display: grid; grid-template-columns: repeat(4, 48px); gap: var(--s2); justify-content: center; }
+.avatar-opt { display: grid; place-items: center; width: 48px; height: 48px; padding: 0; border-radius: 50%; background: transparent; border: 2px solid transparent; }
+.avatar-opt.on { border-color: var(--gold); box-shadow: 0 0 10px rgba(232, 181, 74, 0.35); }
+.avatar-colors { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.avatar-swatch { width: 28px; height: 28px; min-height: 0; padding: 0; border-radius: 50%; border: 2px solid rgba(0, 0, 0, 0.35); }
+.avatar-swatch.on { outline: 2px solid var(--gold); outline-offset: 2px; }
+.avatar-swatch:disabled { opacity: 0.35; }
+.play-again { display: flex; flex-direction: column; gap: var(--s2); }
+.play-again p { margin: 0; }
+.ready-mark { color: var(--ok); font-weight: 700; }

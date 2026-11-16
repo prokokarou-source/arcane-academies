@@ -237,3 +237,52 @@ describe('invites', () => {
     expect(b.last('invite')).toBeUndefined();
   });
 });
+
+describe('avatars', () => {
+  it('saves the avatar, tells my tabs and rooms, and shows it to friends, on the leaderboard and profile', async () => {
+    const store = new MemoryStore();
+    const clock = new ManualClock(1_000_000);
+    const changed: Conn[][] = [];
+    const social = new Social(store, { roomOf: () => null, clock, onAvatar: (cs) => changed.push(cs) });
+    const send = async (c: FakeConn, m: SocialMessage) => {
+      await social.handle(c, m);
+      await settle();
+    };
+    const a = new FakeConn('Ana');
+    const b = new FakeConn('Bob');
+    await send(a, { t: 'signup', username: 'Ana', password: 'secret1' });
+    await send(b, { t: 'signup', username: 'Bob', password: 'secret1' });
+    await send(a, { t: 'friendRequest', username: 'Bob' });
+    await send(b, { t: 'friendAccept', username: 'Ana' });
+    const tab2 = new FakeConn('Ana2');
+    await send(tab2, { t: 'auth', token: a.last('account')!.token! });
+
+    await send(a, { t: 'setAvatar', avatar: { icon: 'crown', color: 'violet' } });
+    const av = { icon: 'crown', color: 'violet' };
+    expect(a.last('account')).toEqual({ t: 'account', username: 'Ana', avatar: av });
+    expect(tab2.last('account')!.avatar).toEqual(av);
+    expect(changed).toEqual([[a, tab2]]);
+    expect(social.userOf(a)!.avatar).toEqual(av);
+    expect(b.last('friends')!.list.friends[0]).toEqual({ username: 'Ana', online: true, avatar: av });
+    await send(b, { t: 'leaderboard' });
+    expect(b.last('leaderboard')!.rows.find((r) => r.username === 'Ana')!.avatar).toEqual(av);
+    await send(a, { t: 'profile' });
+    expect(a.last('profile')!.profile.avatar).toEqual(av);
+
+    // A new login brings it back.
+    const c = new FakeConn();
+    await send(c, { t: 'login', username: 'ana', password: 'secret1' });
+    expect(c.last('account')!.avatar).toEqual(av);
+
+    await send(a, { t: 'setAvatar', avatar: null });
+    expect(a.last('account')!.avatar).toBeNull();
+    expect(b.last('friends')!.list.friends[0].avatar).toBeUndefined();
+  });
+
+  it('needs a login', async () => {
+    const { send } = setup();
+    const g = new FakeConn();
+    await send(g, { t: 'setAvatar', avatar: { icon: 'owl', color: 'gold' } });
+    expect(g.lastError()).toBe('not_logged_in');
+  });
+});

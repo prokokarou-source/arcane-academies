@@ -5,6 +5,7 @@
 import type { Action, BotLevel, PlayerView } from '@arcane/engine';
 import { SOCIAL_ERRORS, isSocialMessage } from '@arcane/protocol';
 import type {
+  Avatar,
   ClientMessage,
   ErrorCode,
   FriendList,
@@ -92,6 +93,8 @@ export interface ClientState {
   restoring: boolean;
   /** Logged-in username, or null for a guest. */
   account: string | null;
+  /** My account's avatar (null: guest or the default). */
+  avatar: Avatar | null;
   /** A signup, login or saved-login check is waiting for the server. */
   accountPending: boolean;
   friends: FriendList | null;
@@ -142,6 +145,7 @@ const INITIAL: ClientState = {
   local: false,
   restoring: false,
   account: null,
+  avatar: null,
   accountPending: false,
   friends: null,
   invites: [],
@@ -322,6 +326,7 @@ export class GameClient {
           clearAccountToken(this.deps.storage);
           this.set({
             account: null,
+            avatar: null,
             accountPending: false,
             friends: null,
             invites: [],
@@ -337,7 +342,7 @@ export class GameClient {
             this.accountToken = msg.token;
             saveAccountToken(this.deps.storage, msg.token);
           }
-          this.set({ account: msg.username, accountPending: false, socialError: null });
+          this.set({ account: msg.username, avatar: msg.avatar ?? null, accountPending: false, socialError: null });
         }
         return;
       case 'friends':
@@ -419,9 +424,11 @@ export class GameClient {
   }
 
   private onGame(msg: GameMsg): void {
-    const prev = this.state.game?.view ?? null;
+    // A finished game followed by a fresh one (play again): nothing carries over.
+    const restart = !!this.state.game?.result && !msg.result;
+    const prev = restart ? null : (this.state.game?.view ?? null);
     const added = termDuels(prev, msg.view);
-    const duels = added && prev ? { term: prev.term, view: msg.view, deltas: added[msg.view.me]?.deltas ?? [] } : this.state.duels;
+    const duels = added && prev ? { term: prev.term, view: msg.view, deltas: added[msg.view.me]?.deltas ?? [] } : restart ? null : this.state.duels;
     this.set({ game: msg, prevView: prev, duels, lobby: null, acting: false });
   }
 
@@ -562,6 +569,7 @@ export class GameClient {
     this.send({ t: 'act', action });
   }
 
+  /** After the game, host: back to the lobby to change seats. */
   rematch(): void {
     if (this.localGame) {
       // Straight into a new game: there is no lobby to gather in when everyone else is a bot.
@@ -569,6 +577,25 @@ export class GameClient {
       return this.localGame.rematch();
     }
     this.send({ t: 'rematch' });
+  }
+
+  /** After the game: I am (not) ready to play again at the same table. */
+  playAgain(ready = true): void {
+    // Offline solo: everyone else is a bot, so "ready" means "start".
+    if (this.localGame) return ready ? this.rematch() : undefined;
+    this.send({ t: 'playAgain', ready });
+  }
+
+  /** After the game, host: start the next game now. */
+  playAgainNow(): void {
+    if (this.localGame) return this.rematch();
+    this.send({ t: 'playAgainNow' });
+  }
+
+  /** Pick my account avatar (null: the default). */
+  setAvatar(avatar: Avatar | null): void {
+    this.set({ avatar });
+    this.send({ t: 'setAvatar', avatar });
   }
 
   /** Send a quick reaction now, or not at all: a stale cheer after a reconnect would be odd. */

@@ -92,6 +92,18 @@ describe('solo game in the browser', () => {
     expect(g.seats.map((x) => x.name)).toEqual(['Ana', 'Bot 1', 'Bot 2', 'Bot 3']);
   });
 
+  it('"Play again" starts the next local game straight away, with nothing sent to the server', () => {
+    const h = harness();
+    h.client.start();
+    h.client.solo('Ana', 2, 'easy');
+    playToEnd(h.client, h.runTimers);
+    const sent = h.sockets.flatMap((s) => s.sent).length;
+    h.client.playAgain(true);
+    expect(h.client.getState().game?.result).toBeUndefined();
+    expect(h.client.getState().game?.view).toMatchObject({ term: 1, turn: 1 });
+    expect(h.sockets.flatMap((s) => s.sent)).toHaveLength(sent);
+  });
+
   it('starts from Home while the server is unreachable', () => {
     const r = renderApp();
     act(() => r.sock().serverClose(1006));

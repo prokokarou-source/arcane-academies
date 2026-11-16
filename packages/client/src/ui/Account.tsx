@@ -5,12 +5,13 @@ import { useClient, useClientState, useT } from './context';
 import { PushToggle } from './PushToggle';
 import { BlockedList, RecoverySection } from './Safety';
 import { ScreenHead } from './ScreenHead';
+import { AvatarGlyph, AvatarPicker } from './Avatar';
 
 /** Log in or create an account (username + password). Optional: guests can always play. */
 export function Account(props: { onBack(): void; onFriends(): void; onProfile(): void; onPrivacy?(): void }) {
   const client = useClient();
   const t = useT();
-  const { account, accountPending, socialError } = useClientState();
+  const { account, avatar, accountPending, socialError } = useClientState();
   const push = usePush();
   const [mode, setMode] = useState<'login' | 'signup' | 'recover'>('login');
   const [username, setUsername] = useState('');
@@ -22,10 +23,12 @@ export function Account(props: { onBack(): void; onFriends(): void; onProfile():
       <main className="screen">
         <ScreenHead title={t('account')} onBack={props.onBack} />
         <section className="panel id-card">
-          <span className="avatar" aria-hidden="true">
-            {account.slice(0, 1).toUpperCase()}
-          </span>
+          <AvatarGlyph avatar={avatar} size={64} label={t('avatarOf', { name: account })} />
           <p className="who">{t('signedInAs', { name: account })}</p>
+          <details className="avatar-edit">
+            <summary>{t('avatar')}</summary>
+            <AvatarPicker value={avatar} onPick={(a) => client.setAvatar(a)} />
+          </details>
           <div className="row stretch">
             <button className="primary" onClick={props.onProfile}>
               {t('profile')}

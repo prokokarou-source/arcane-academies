@@ -4,6 +4,7 @@ import type { GameResult, SeatStatus } from '@arcane/protocol';
 import { useClient, useClientState, useT, type T } from './context';
 import { FAMILY_COLOR } from './Family';
 import { PlayerMenu } from './Safety';
+import { AvatarGlyph } from './Avatar';
 
 const CATS = ['duels', 'coins', 'tower', 'lore', 'trade', 'research', 'patrons', 'total'] as const satisfies readonly (keyof ScoreBreakdown)[];
 const ITEM_ORDER: ScoreCategory[] = ['duels', 'coins', 'tower', 'lore', 'trade', 'patrons', 'research'];
@@ -61,10 +62,14 @@ export function GameEnd(props: { me: number; result: GameResult; seats: SeatStat
   const [open, setOpen] = useState<number | null>(me);
   const name = (seat: number) => seats[seat]?.name ?? `#${seat}`;
   const winners = result.winners.map(name).join(', ');
-  const isHost = seatId !== null && seatId === hostId;
-  // The server lets anyone start the rematch when the host is gone; the client can't tell which seat is the host,
-  // so it offers the button whenever another human is offline.
-  const hostMaybeGone = seats.some((s) => s.kind === 'human' && !s.connected && s.seat !== me);
+  // The server marks the host seat; a host who is gone cannot block the next game, so anyone may start it then.
+  const marked = seats.some((s) => s.host);
+  const isHost = marked ? !!seats[me]?.host : seatId !== null && seatId === hostId;
+  const hostGone = marked ? seats.some((s) => s.host && !s.connected) : seats.some((s) => s.kind === 'human' && !s.connected && s.seat !== me);
+  const canStart = isHost || hostGone;
+  const here = seats.filter((s) => s.kind === 'human' && s.connected);
+  const readyN = here.filter((s) => s.ready).length;
+  const iAmReady = !!seats[me]?.ready;
   const ranked = [...result.scores].sort((a, b) => b.total - a.total);
   return (
     <section className="panel game-end">
@@ -99,7 +104,13 @@ export function GameEnd(props: { me: number; result: GameResult; seats: SeatStat
                         <span className="caret" aria-hidden="true">
                           {isOpen ? '▾' : '▸'}
                         </span>
+                        {seats[s.seat]?.kind === 'human' && <AvatarGlyph avatar={seats[s.seat]?.avatar} size={20} />}
                         {name(s.seat)}
+                        {seats[s.seat]?.ready && (
+                          <span className="ready-mark" title={t('readyTag')}>
+                            ✓
+                          </span>
+                        )}
                       </button>
                       {seats[s.seat]?.kind === 'archmage' && <span className="muted small">{` (${t('cantWin')})`}</span>}
                       {s.seat !== me && seats[s.seat]?.username && <PlayerMenu username={seats[s.seat].username!} />}
@@ -122,13 +133,26 @@ export function GameEnd(props: { me: number; result: GameResult; seats: SeatStat
         </table>
       </div>
       <p className="muted small center">{t('tapForDetails')}</p>
-      {isHost || hostMaybeGone ? (
-        <button className="primary" onClick={() => client.rematch()}>
-          {t('rematch')}
-        </button>
-      ) : (
-        <p className="muted center">{t('waitingRematch')}</p>
-      )}
+      <div className="play-again">
+        {iAmReady ? (
+          <button onClick={() => client.playAgain(false)}>{t('notReady')}</button>
+        ) : (
+          <button className="primary" onClick={() => client.playAgain(true)}>
+            {t('playAgain')}
+          </button>
+        )}
+        <p className="muted small center" aria-live="polite">
+          {t('readyCount', { n: readyN, total: here.length })}
+          {' · '}
+          {t('playAgainHint')}
+        </p>
+        {canStart && (
+          <div className="row stretch">
+            <button onClick={() => client.playAgainNow()}>{t('startNow')}</button>
+            <button onClick={() => client.rematch()}>{t('backToLobby')}</button>
+          </div>
+        )}
+      </div>
       <button className="link" onClick={() => client.leave()}>
         {t('leave')}
       </button>

@@ -19,6 +19,7 @@ import {
   REACTION_BURST,
   REACTION_REFILL_MS,
   SETTINGS_LIMITS,
+  type Avatar,
   type ClientMessage,
   type CloseReason,
   type ErrorCode,
@@ -50,6 +51,8 @@ export interface RoomOptions {
   usernameOf?(conn: Conn): string | null;
   /** True when the account on `viewer` blocked `accountId`: that account's reactions are not sent to it. */
   hidesFrom?(viewer: Conn, accountId: string): boolean;
+  /** The avatar of the account logged in on this connection (null: guest or default). */
+  avatarOf?(conn: Conn): Avatar | null;
   /** Called once per finished game with one record per account seated in it. */
   onResults?(records: GameRecord[]): void;
 }
@@ -80,6 +83,10 @@ interface Member {
   accountId?: string;
   /** Its username, shown on the seat so others can befriend, block or report it. */
   username?: string;
+  /** Humans only: the avatar of the account last seen on this seat. */
+  avatar?: Avatar | null;
+  /** After the game: this player tapped "Play again". */
+  ready?: boolean;
 }
 
 /**
@@ -175,6 +182,16 @@ export class Room {
     m.conn = null;
     this.clearGrace(m);
     m.graceTimer = this.clock.setTimer(this.settings.graceMs, () => this.graceExpired(m));
+    // The others may all be ready to play again already.
+    if (this.replayIfAllReady()) return;
+    this.broadcast();
+  }
+
+  /** The account on this connection changed its avatar. */
+  refreshAvatar(conn: Conn): void {
+    const m = this.byConn.get(conn);
+    if (!m || this.closed) return;
+    m.avatar = this.opts.avatarOf?.(conn) ?? null;
     this.broadcast();
   }
 
@@ -206,6 +223,10 @@ export class Room {
         return this.act(m, msg.action);
       case 'rematch':
         return this.rematch(m);
+      case 'playAgain':
+        return this.playAgain(m, msg.ready);
+      case 'playAgainNow':
+        return this.playAgainNow(m);
       case 'react':
         return this.react(m, msg.reaction);
       default:
@@ -329,6 +350,7 @@ export class Room {
     const stay = this.members.filter((x) => x.kind === 'human' && !x.left);
     if (stay.length === 0) return this.close('left');
     if (this.hostId === m.id) this.hostId = (stay.find((x) => x.conn) ?? stay[0]).id;
+    if (this.replayIfAllReady()) return;
     this.advance();
   }
 
@@ -396,9 +418,66 @@ export class Room {
     for (const x of [...this.members]) {
       x.botControlled = false;
       x.engineSeat = -1;
+      x.ready = false;
       if (x.kind === 'human' && !x.conn) this.removeMember(x, 'removed');
     }
     if (!this.closed) this.broadcast();
+  }
+
+  private gameOver(): boolean {
+    return this.phase === 'game' && this.state?.phase === 'ended';
+  }
+
+  /** After the game: mark me (not) ready; once every connected player is ready, the next game starts. */
+  private playAgain(m: Member, ready: boolean): void {
+    if (!this.gameOver()) return this.fail(m.conn!, 'wrong_phase', 'The game has not ended');
+    m.ready = ready;
+    if (!this.replayIfAllReady()) this.broadcast();
+  }
+
+  /** The host starts the next game without waiting; a host who is gone cannot block it. */
+  private playAgainNow(m: Member): void {
+    const host = this.members.find((x) => x.id === this.hostId);
+    if (m.id !== this.hostId && host?.conn) return this.fail(m.conn!, 'not_host', 'Only the host can do that');
+    if (!this.gameOver()) return this.fail(m.conn!, 'wrong_phase', 'The game has not ended');
+    this.hostId = m.id;
+    this.replay();
+  }
+
+  private replayIfAllReady(): boolean {
+    if (!this.gameOver()) return false;
+    const here = this.members.filter((x) => x.kind === 'human' && x.conn);
+    if (here.length === 0 || !here.every((x) => x.ready)) return false;
+    this.replay();
+    return true;
+  }
+
+  /**
+   * Next game at the same table: same seats, bots and settings; players who are gone are dropped.
+   * Academies nobody chose are drawn again. Too few seats left: back to the lobby instead.
+   */
+  private replay(): void {
+    this.clearTurnTimer();
+    for (const x of [...this.members]) {
+      if (x.kind !== 'human' || x.conn) continue;
+      this.clearGrace(x);
+      this.members = this.members.filter((y) => y !== x);
+    }
+    const humans = this.members.filter((x) => x.kind === 'human');
+    if (humans.length === 0) return this.close('left');
+    if (!humans.some((x) => x.id === this.hostId)) this.hostId = humans[0].id;
+    for (const x of this.members) {
+      x.ready = false;
+      x.botControlled = false;
+      x.left = false;
+      x.engineSeat = -1;
+    }
+    if (this.members.length < 2) {
+      this.phase = 'lobby';
+      this.state = null;
+      return this.broadcast();
+    }
+    this.begin();
   }
 
   // ---------- reactions ----------
@@ -552,11 +631,13 @@ export class Room {
         side: m.side,
         connected: m.kind === 'bot' || !!m.conn,
         ...(m.username ? { username: m.username } : {}),
+        ...(m.avatar ? { avatar: m.avatar } : {}),
       })),
     };
   }
 
   private seatStatus(): SeatStatus[] {
+    const over = this.state!.phase === 'ended';
     return this.state!.players.map((p) => {
       const m = this.memberAt(p.seat);
       return {
@@ -566,6 +647,9 @@ export class Room {
         connected: p.config.kind !== 'human' || !!m?.conn,
         botControlled: !!m?.botControlled,
         ...(m?.username ? { username: m.username } : {}),
+        ...(m?.avatar ? { avatar: m.avatar } : {}),
+        ...(m && m.id === this.hostId ? { host: true } : {}),
+        ...(over && m?.kind === 'human' ? { ready: !!m.ready } : {}),
       };
     });
   }
@@ -583,6 +667,7 @@ export class Room {
 
   private bind(m: Member, conn: Conn): void {
     m.conn = conn;
+    if (this.opts.avatarOf) m.avatar = this.opts.avatarOf(conn);
     this.byConn.set(conn, m);
   }
 

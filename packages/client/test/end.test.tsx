@@ -117,22 +117,46 @@ describe('Game end', () => {
     expect(screen.queryByText('Duel tokens')).toBeNull();
   });
 
-  it('host sees rematch and sends it', () => {
-    const h = play('s1', 's1', [ended(0)]);
-    fireEvent.click(screen.getByRole('button', { name: 'Rematch' }));
-    expect(h.sock().sent).toEqual([{ t: 'rematch' }]);
+  /** Ended game with the server's host and ready marks (Ana s1 is host). */
+  const endedWith = (seat: number, ready: boolean[], connected = [true, true, true]) => {
+    const g = ended(seat);
+    return { ...g, seats: g.seats.map((x, i) => ({ ...x, host: i === 0, ready: ready[i], connected: connected[i] })) };
+  };
+
+  it('everyone sees Play again and the ready count; tapping it marks me ready', () => {
+    const h = play('s2', 's1', [endedWith(1, [true, false, false])]);
+    expect(screen.getByText(/1\/3 ready/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Start now' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Back to lobby' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Play again' }));
+    expect(h.sock().sent).toEqual([{ t: 'playAgain', ready: true }]);
   });
 
-  it('non-host sees waiting text', () => {
-    play('s2', 's1', [ended(1)]);
-    expect(screen.getByText('Waiting for the host to start a rematch…')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Rematch' })).toBeNull();
+  it('once ready I can take it back', () => {
+    const h = play('s2', 's1', [endedWith(1, [false, true, false])]);
+    expect(screen.queryByRole('button', { name: 'Play again' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Not yet' }));
+    expect(h.sock().sent).toEqual([{ t: 'playAgain', ready: false }]);
   });
 
-  it('non-host may rematch when someone is offline (the host may be gone)', () => {
-    const g = ended(1);
-    play('s2', 's1', [{ ...g, seats: g.seats.map((x, i) => (i === 0 ? { ...x, connected: false } : x)) }]);
-    expect(screen.getByRole('button', { name: 'Rematch' })).toBeTruthy();
+  it('the host can start now or go back to the lobby', () => {
+    const h = play('s1', 's1', [endedWith(0, [false, true, false])]);
+    fireEvent.click(screen.getByRole('button', { name: 'Start now' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Back to lobby' }));
+    expect(h.sock().sent).toEqual([{ t: 'playAgainNow' }, { t: 'rematch' }]);
+  });
+
+  it('when the host is gone anyone may start; offline players do not count', () => {
+    play('s2', 's1', [endedWith(1, [false, true, false], [false, true, true])]);
+    expect(screen.getByText(/1\/2 ready/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Start now' })).toBeTruthy();
+  });
+
+  it('a new game after the end screen starts clean', () => {
+    const h = play('s1', 's1', [endedWith(0, [true, true, true])]);
+    act(() => h.sock().receive(gameMsg(s, 0)));
+    expect(screen.queryByText('Game over')).toBeNull();
+    expect(h.client.getState()).toMatchObject({ prevView: null, duels: null });
   });
 
   it('marks the Archmage as unable to win', () => {

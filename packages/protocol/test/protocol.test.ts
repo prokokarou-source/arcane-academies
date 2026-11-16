@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { encode, isSocialMessage, parseClientMessage, MAX_MESSAGE_BYTES, REACTIONS } from '../src/index';
+import { AVATAR_COLORS, AVATAR_ICONS, avatarKey, encode, isSocialMessage, parseAvatarKey, parseClientMessage, MAX_MESSAGE_BYTES, REACTIONS } from '../src/index';
 import type { ClientMessage, ServerMessage } from '../src/index';
 
 const plan = { buyLeft: { ink: 1 }, buyRight: {}, coinsToLeft: 2, coinsToRight: 0, coinsToBank: 0, free: false };
@@ -232,5 +232,53 @@ describe('block, report and recovery messages', () => {
       { t: 'recoveryCode', code: 'ABCD-EFGH-JKMN-PQRS' },
     ];
     for (const m of msgs) expect(JSON.parse(encode(m))).toEqual(m);
+  });
+});
+
+describe('rematch messages', () => {
+  it('round-trip and are room messages', () => {
+    for (const m of [{ t: 'playAgain', ready: true }, { t: 'playAgain', ready: false }, { t: 'playAgainNow' }, { t: 'rematch' }] as ClientMessage[]) {
+      expect(parseClientMessage(encode(m))).toEqual(m);
+      expect(isSocialMessage(m)).toBe(false);
+    }
+  });
+
+  it('rejects a missing or non-boolean ready flag', () => {
+    expect(parseClientMessage(JSON.stringify({ t: 'playAgain' }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ t: 'playAgain', ready: 'yes' }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ t: 'playAgainNow', extra: 1 }))).toEqual({ t: 'playAgainNow' });
+  });
+});
+
+describe('avatars', () => {
+  it('has 16 emblems and 8 colours', () => {
+    expect(AVATAR_ICONS).toHaveLength(16);
+    expect(AVATAR_COLORS).toHaveLength(8);
+  });
+
+  it('setAvatar round-trips, is social, and drops extra fields', () => {
+    for (const m of [{ t: 'setAvatar', avatar: { icon: 'owl', color: 'teal' } }, { t: 'setAvatar', avatar: null }] as ClientMessage[]) {
+      expect(parseClientMessage(encode(m))).toEqual(m);
+      expect(isSocialMessage(m)).toBe(true);
+    }
+    expect(parseClientMessage(JSON.stringify({ t: 'setAvatar', avatar: { icon: 'key', color: 'gold', x: 1 } }))).toEqual({
+      t: 'setAvatar',
+      avatar: { icon: 'key', color: 'gold' },
+    });
+  });
+
+  it('rejects unknown emblems and colours', () => {
+    expect(parseClientMessage(JSON.stringify({ t: 'setAvatar' }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ t: 'setAvatar', avatar: { icon: 'dragon', color: 'gold' } }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ t: 'setAvatar', avatar: { icon: 'owl', color: 'pink' } }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ t: 'setAvatar', avatar: 'owl:gold' }))).toBeNull();
+  });
+
+  it('stores as icon:color and reads back only valid keys', () => {
+    expect(avatarKey({ icon: 'comet', color: 'rose' })).toBe('comet:rose');
+    expect(parseAvatarKey('comet:rose')).toEqual({ icon: 'comet', color: 'rose' });
+    expect(parseAvatarKey('comet:pink')).toBeNull();
+    expect(parseAvatarKey(null)).toBeNull();
+    expect(parseAvatarKey('')).toBeNull();
   });
 });

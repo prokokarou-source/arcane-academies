@@ -5,6 +5,7 @@ import { useSound } from '../audio/context';
 import { useClient, useClientState, useT, type T } from './context';
 import { LEVELS } from './Home';
 import { Crest } from './Icon';
+import { AvatarGlyph } from './Avatar';
 import { inviteLink } from '../net/url';
 import { ReactionBubble, ReactionButton, useReactions } from './Reactions';
 import { PlayerMenu } from './Safety';
@@ -85,6 +86,7 @@ export function Lobby(props: { onFriends?: () => void } = {}) {
               <div className="seat-top">
                 <span className={`dot ${s.connected ? 'on' : 'off'}`} title={s.connected ? '' : t('offline')} />
                 {s.academyId && <Crest academyId={s.academyId} size={24} />}
+                {s.kind === 'human' && <AvatarGlyph avatar={s.avatar} size={24} />}
                 <span className="name">
                   {s.name}
                   <ReactionBubble reaction={reactions.get(s.id)} name={s.name} />

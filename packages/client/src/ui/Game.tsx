@@ -10,6 +10,7 @@ import { Deadline } from './Deadline';
 import { FamilyCounts } from './Family';
 import { CostView, EffectView, ResearchView } from './Glyphs';
 import { academyArt, Crest, Icon } from './Icon';
+import { AvatarGlyph } from './Avatar';
 import { useSound } from '../audio/context';
 import { GameEnd } from './GameEnd';
 import { useGameFx, useMotion, type GameFx, type Launch } from './gameFx';
@@ -271,7 +272,10 @@ function Neighbor(props: {
         {p.hasSubmitted && <span className="ready">✓</span>}
       </span>
       <ReactionBubble reaction={props.reaction} name={name} />
-      <span className="name">{name}</span>
+      <span className="name">
+        {s?.kind === 'human' && <AvatarGlyph avatar={s.avatar} size={16} />}
+        {name}
+      </span>
       <span className="small glyphs">
         <span className="num">
           {p.coins}

@@ -63,11 +63,17 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
       usernameOf: (c) => social.userOf(c)?.username ?? null,
       hidesFrom: (viewer, accountId) => social.hasBlocked(viewer, accountId),
       apart: (a, b) => social.apart(a, b),
+      avatarOf: (c) => social.userOf(c)?.avatar ?? null,
       onResults: (r) => social.recordResults(r),
     },
     realClock,
   );
-  const social: Social = new Social(store, { roomOf: (c) => manager.codeOf(c), clock: realClock, push: opts.push ?? null });
+  const social: Social = new Social(store, {
+    roomOf: (c) => manager.codeOf(c),
+    clock: realClock,
+    push: opts.push ?? null,
+    onAvatar: (conns) => conns.forEach((c) => manager.refreshAvatar(c)),
+  });
   const serveStatic = opts.staticDir ? staticHandler(opts.staticDir) : null;
   const reportClientError = clientErrorHandler(opts.clientErrors);
   const http = createServer((req, res) => {

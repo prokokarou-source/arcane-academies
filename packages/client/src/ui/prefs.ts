@@ -7,11 +7,13 @@ export interface Prefs {
   music: boolean;
   sfx: boolean;
   haptics: boolean;
+  /** Hide other players' quick reactions and their sound. */
+  muteReactions: boolean;
 }
 
 type Store = Pick<Storage, 'getItem' | 'setItem'>;
 const KEY = 'arcane.prefs';
-export const DEFAULT_PREFS: Prefs = { name: '', lang: 'en', animations: true, music: true, sfx: true, haptics: true };
+export const DEFAULT_PREFS: Prefs = { name: '', lang: 'en', animations: true, music: true, sfx: true, haptics: true, muteReactions: false };
 
 export function loadPrefs(storage: Store): Prefs {
   try {
@@ -25,6 +27,7 @@ export function loadPrefs(storage: Store): Prefs {
       music: typeof v.music === 'boolean' ? v.music : soundOn,
       sfx: typeof v.sfx === 'boolean' ? v.sfx : soundOn,
       haptics: v.haptics !== false,
+      muteReactions: v.muteReactions === true,
     };
   } catch {
     return DEFAULT_PREFS;

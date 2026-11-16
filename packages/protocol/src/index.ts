@@ -107,6 +107,14 @@ export const SOCIAL_TYPES: readonly SocialMessage['t'][] = [
 
 export const isSocialMessage = (m: ClientMessage): m is SocialMessage => (SOCIAL_TYPES as readonly string[]).includes(m.t);
 
+/** Quick reactions: a fixed set, so strangers can cheer without free text. */
+export const REACTIONS = ['clap', 'wow', 'laugh', 'fire', 'think', 'goodMove', 'hurry', 'gg'] as const;
+export type ReactionId = (typeof REACTIONS)[number];
+export const isReaction = (v: unknown): v is ReactionId => typeof v === 'string' && (REACTIONS as readonly string[]).includes(v);
+/** Per-seat limit: a burst of REACTION_BURST, then one more every REACTION_REFILL_MS. */
+export const REACTION_BURST = 3;
+export const REACTION_REFILL_MS = 2_000;
+
 export type ClientMessage =
   | SocialMessage
   | { t: 'create'; name: string }
@@ -125,7 +133,8 @@ export type ClientMessage =
   | { t: 'quickMatch'; name: string; size: QuickSize }
   | { t: 'quickCancel' }
   /** Stop searching and play right away against Normal bots. */
-  | { t: 'quickBots' };
+  | { t: 'quickBots' }
+  | { t: 'react'; reaction: ReactionId };
 
 export type ErrorCode =
   | 'bad_message'
@@ -186,6 +195,8 @@ export type ServerMessage =
   | { t: 'game'; view: PlayerView; legal: Action[]; seats: SeatStatus[]; deadline: number | null; result?: GameResult }
   | { t: 'error'; code: ErrorCode; message: string }
   | { t: 'closed'; reason: CloseReason }
+  /** Someone in the room reacted. `seat` is their engine seat during a game, else null. */
+  | { t: 'reaction'; seatId: SeatId; seat: number | null; reaction: ReactionId }
   /** Logged in (token only after signup/login, to be saved) or logged out (username null). */
   | { t: 'account'; username: string | null; token?: string }
   | { t: 'friends'; list: FriendList }
@@ -338,6 +349,8 @@ function parseObj(m: Obj): ClientMessage | null {
       const s = settings(m.settings);
       return s ? { t: 'settings', settings: s } : null;
     }
+    case 'react':
+      return isReaction(m.reaction) ? { t: 'react', reaction: m.reaction } : null;
     case 'act': {
       const a = action(m.action);
       return a ? { t: 'act', action: a } : null;

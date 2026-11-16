@@ -281,6 +281,17 @@ export const en = {
   quickKeep: 'Keep waiting',
   quickStartsIn: 'The game starts in {n} s',
   quickFill: 'Empty seats get Normal bots.',
+  // quick reactions
+  react: 'React',
+  muteReactions: 'Mute reactions',
+  react_clap: 'Applause',
+  react_wow: 'Wow',
+  react_laugh: 'Ha ha',
+  react_fire: 'On fire',
+  react_think: 'Hmm',
+  react_goodMove: 'Good move!',
+  react_hurry: 'Hurry up!',
+  react_gg: 'Good game!',
 } as const;
 
 export type StringKey = keyof typeof en;

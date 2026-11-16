@@ -34,7 +34,11 @@ const HAPTICS: Partial<Record<Cue, number | number[]>> = {
   duelWin: [30, 40, 60],
   victory: [30, 40, 60],
   duelLoss: 80,
+  reaction: 8,
 };
+/** Cues that reuse another cue's file, and quieter cues. */
+const FILES: Partial<Record<Cue, string>> = { reaction: 'tap' };
+const VOLUMES: Partial<Record<Cue, number>> = { reaction: 0.4 };
 
 export function createSoundBoard(opts: {
   backend: AudioBackend;
@@ -95,8 +99,8 @@ export function createSoundBoard(opts: {
       if (!unlocked || !prefs.sfx) return;
       let el = effects.get(cue);
       if (!el) {
-        el = backend.create(`/sounds/${cue}.mp3`);
-        el.volume = SFX_VOLUME;
+        el = backend.create(`/sounds/${FILES[cue] ?? cue}.mp3`);
+        el.volume = VOLUMES[cue] ?? SFX_VOLUME;
         effects.set(cue, el);
       }
       el.currentTime = 0;

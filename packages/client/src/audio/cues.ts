@@ -15,9 +15,11 @@ export type Cue =
   | 'gameOver'
   | 'join'
   | 'start'
-  | 'tap';
+  | 'tap'
+  /** Someone else's quick reaction; played by the reaction bubbles, not by cuesFor. */
+  | 'reaction';
 
-export const CUES: Cue[] = ['select', 'build', 'tower', 'sell', 'turn', 'tick', 'clash', 'duelWin', 'duelLoss', 'victory', 'gameOver', 'join', 'start', 'tap'];
+export const CUES: Cue[] = ['select', 'build', 'tower', 'sell', 'turn', 'tick', 'clash', 'duelWin', 'duelLoss', 'victory', 'gameOver', 'join', 'start', 'tap', 'reaction'];
 
 type Game = NonNullable<ClientState['game']>;
 const turnKey = (g: Game) => `${g.view.term}/${g.view.turn}/${g.view.phase}`;

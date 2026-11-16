@@ -4,7 +4,7 @@
  */
 import type { Action, BotLevel, PlayerView } from '@arcane/engine';
 import { SOCIAL_ERRORS, isSocialMessage } from '@arcane/protocol';
-import type { ClientMessage, ErrorCode, FriendList, LobbyState, RoomSettings, SeatId, ServerMessage } from '@arcane/protocol';
+import type { ClientMessage, ErrorCode, FriendList, LobbyState, QuickSize, RoomSettings, SeatId, ServerMessage } from '@arcane/protocol';
 import { termDuels } from '../game/derive';
 import { clearAccountToken, clearSession, loadAccountToken, loadSession, saveAccountToken, saveSession, type Session } from './session';
 
@@ -24,6 +24,17 @@ export interface ClientDeps {
   storage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
   setTimeout(fn: () => void, ms: number): unknown;
   clearTimeout(id: unknown): void;
+  /** Wall clock (ms); Date.now when not given. */
+  now?(): number;
+}
+
+/** A quick-match search in progress. */
+export interface QuickSearch {
+  size: QuickSize;
+  /** Players searching right now, me included (0 until the server answers). */
+  searching: number;
+  /** Local time (ms) the search began. */
+  since: number;
 }
 
 export type Notice = 'replaced' | 'expired' | 'left' | 'removed' | 'rejoinFailed';
@@ -69,6 +80,8 @@ export interface ClientState {
   invites: Invite[];
   /** The last account or friend error, shown on those screens instead of the room banner. */
   socialError: { code: ErrorCode; message: string } | null;
+  /** Searching for a quick match. */
+  quick: QuickSearch | null;
 }
 
 const OPEN = 1;
@@ -95,6 +108,7 @@ const INITIAL: ClientState = {
   friends: null,
   invites: [],
   socialError: null,
+  quick: null,
 };
 
 export class GameClient {
@@ -111,6 +125,8 @@ export class GameClient {
   private soloPlan: { bots: number; level: BotLevel } | null = null;
   /** Saved login, resent on every (re)connect so presence follows the socket. */
   private accountToken: string | null = null;
+  /** The quick-match request, resent after a reconnect (the server drops the queue entry with the socket). */
+  private quickReq: Extract<ClientMessage, { t: 'quickMatch' }> | null = null;
 
   constructor(private readonly deps: ClientDeps) {}
 
@@ -191,6 +207,7 @@ export class GameClient {
       this.raw({ t: 'rejoin', code: session.code, token: session.token });
     } else {
       this.flushQueue();
+      if (this.quickReq) this.raw(this.quickReq);
     }
   }
 
@@ -225,7 +242,8 @@ export class GameClient {
           const hostId = this.session?.code === msg.code ? this.session.hostId : undefined;
           this.session = { code: msg.code, token: msg.token, ...(hostId ? { hostId } : {}) };
           saveSession(this.deps.storage, this.session);
-          this.set({ seatId: msg.seatId, code: msg.code, hostId: hostId ?? null, notice: null, error: null });
+          this.quickReq = null;
+          this.set({ seatId: msg.seatId, code: msg.code, hostId: hostId ?? null, notice: null, error: null, quick: null });
         }
         return;
       case 'lobby':
@@ -256,6 +274,16 @@ export class GameClient {
         return;
       case 'friends':
         this.set({ friends: msg.list });
+        return;
+      case 'quickQueue': {
+        if (!this.quickReq) return;
+        const since = this.state.quick?.since ?? this.now() - msg.waitedMs;
+        this.set({ quick: { size: msg.size, searching: msg.searching, since } });
+        return;
+      }
+      case 'quickCancelled':
+        this.quickReq = null;
+        this.set({ quick: null });
         return;
       case 'presence': {
         const list = this.state.friends;
@@ -338,6 +366,10 @@ export class GameClient {
 
   // ---------- sending ----------
 
+  private now(): number {
+    return this.deps.now?.() ?? Date.now();
+  }
+
   private raw(msg: ClientMessage): void {
     this.ws?.send(JSON.stringify(msg));
   }
@@ -361,6 +393,27 @@ export class GameClient {
   solo(name: string, bots: number, level: BotLevel): void {
     this.soloPlan = { bots, level };
     this.create(name);
+  }
+
+  /** Look for strangers to play with; size null means any table. */
+  quickMatch(name: string, size: QuickSize): void {
+    this.quickReq = { t: 'quickMatch', name, size };
+    this.set({ notice: null, error: null, quick: { size, searching: 0, since: this.now() } });
+    // Not open yet: onOpen sends it.
+    if (this.ws?.readyState === OPEN && !this.rejoinPending) this.raw(this.quickReq);
+  }
+
+  quickCancel(): void {
+    if (!this.quickReq) return;
+    this.quickReq = null;
+    this.set({ quick: null });
+    this.send({ t: 'quickCancel' });
+  }
+
+  /** Stop searching and play now against Normal bots. */
+  quickBots(): void {
+    if (!this.quickReq) return;
+    this.send({ t: 'quickBots' });
   }
 
   leave(): void {

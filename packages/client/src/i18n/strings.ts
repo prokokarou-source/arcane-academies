@@ -268,6 +268,19 @@ export const en = {
   privacy: 'Privacy',
   crashTitle: 'Something went wrong',
   crashBody: 'The app hit an unexpected error. Reloading usually fixes it; your game is kept on the server.',
+  // quick match
+  quickMatch: 'Quick match',
+  quickHint: 'Play with others who are searching right now. No code needed.',
+  quickSize: 'Players',
+  quickAny: 'Any',
+  quickSearching: 'Looking for players…',
+  quickWaited: 'Waiting {time}',
+  quickCount: 'Players searching: {n}',
+  quickAlone: 'No one else is searching right now.',
+  quickBots: 'Play with bots instead',
+  quickKeep: 'Keep waiting',
+  quickStartsIn: 'The game starts in {n} s',
+  quickFill: 'Empty seats get Normal bots.',
 } as const;
 
 export type StringKey = keyof typeof en;

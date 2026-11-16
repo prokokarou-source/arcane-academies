@@ -81,7 +81,8 @@ export function App({ initialRoom, initialPage }: { initialRoom?: string; initia
           {t('offlineBar')}
         </div>
       ) : state.game || state.lobby ? (
-        state.conn === 'reconnecting' && (
+        state.conn === 'reconnecting' &&
+        !state.local && (
           <div className="bar bar-warn" role="status">
             {t('reconnecting')}
           </div>

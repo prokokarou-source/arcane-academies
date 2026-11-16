@@ -23,6 +23,13 @@ function makeClient(storage = memoryStorage()) {
   return { client, storage };
 }
 
+/** A server room filled with bots (Play solo runs in the browser, so build the room by hand). */
+function botRoom(client: GameClient, name: string, bots: number): void {
+  client.create(name);
+  for (let i = 0; i < bots; i++) client.addBot('easy');
+  client.startGame();
+}
+
 function waitUntil(client: GameClient, pred: (s: ClientState) => boolean, timeoutMs = 20_000): Promise<ClientState> {
   return new Promise((resolve, reject) => {
     const check = () => {
@@ -43,9 +50,9 @@ function waitUntil(client: GameClient, pred: (s: ClientState) => boolean, timeou
 }
 
 describe('client against the real server', () => {
-  it('plays a solo game against bots to the end', async () => {
+  it('plays a game against server bots to the end', async () => {
     const { client } = makeClient();
-    client.solo('Ana', 2, 'easy');
+    botRoom(client, 'Ana', 2);
     // Act with the first legal action whenever offered, like a player tapping quickly.
     const off = client.subscribe(() => {
       const s = client.getState();
@@ -62,7 +69,7 @@ describe('client against the real server', () => {
 
   it('reloads mid-game and rejoins', async () => {
     const first = makeClient();
-    first.client.solo('Bea', 3, 'easy');
+    botRoom(first.client, 'Bea', 3);
     const g = await waitUntil(first.client, (s) => !!s.game);
     const me = g.game!.view.me;
     const seatId = g.seatId;

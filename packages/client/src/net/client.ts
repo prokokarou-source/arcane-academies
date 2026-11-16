@@ -6,6 +6,7 @@ import type { Action, BotLevel, PlayerView } from '@arcane/engine';
 import { SOCIAL_ERRORS, isSocialMessage } from '@arcane/protocol';
 import type { ClientMessage, ErrorCode, FriendList, LeaderRow, LobbyState, Profile, PushSub, QuickSize, ReactionId, RoomSettings, SeatId, ServerMessage } from '@arcane/protocol';
 import { termDuels } from '../game/derive';
+import { LocalGame, loadLocal, type LocalDeps } from './local';
 import { clearAccountToken, clearSession, loadAccountToken, loadSession, saveAccountToken, saveSession, type Session } from './session';
 
 export interface SocketLike {
@@ -71,6 +72,8 @@ export interface ClientState {
   notice: Notice | null;
   /** True after an act was sent until the server answers: blocks double taps. */
   acting: boolean;
+  /** The game runs in this browser (solo against bots), not on the server. */
+  local: boolean;
   /** True while a game stored on this phone is being rejoined at startup. */
   restoring: boolean;
   /** Logged-in username, or null for a guest. */
@@ -100,6 +103,9 @@ const MAX_BACKOFF = 8000;
 const CLOSE_NOTICE: Record<number, Notice> = { 4001: 'replaced', 4002: 'expired' };
 const DEAD_SESSION: ErrorCode[] = ['no_room', 'bad_token', 'not_in_room'];
 const NO_STATS = { profile: null, leaderboard: null, passwordChanged: false } as const;
+/** Seat id and room code of a game played in this browser (no server room exists). */
+const LOCAL_SEAT: SeatId = 's1';
+const LOCAL_CODE = 'SOLO';
 
 const INITIAL: ClientState = {
   conn: 'connecting',
@@ -113,6 +119,7 @@ const INITIAL: ClientState = {
   error: null,
   notice: null,
   acting: false,
+  local: false,
   restoring: false,
   account: null,
   accountPending: false,
@@ -138,7 +145,8 @@ export class GameClient {
   private rejoinPending = false;
   /** The seat this client holds. Storage is read once at start (reload) and only written afterwards, so tabs never steal from each other. */
   private session: Session | null = null;
-  private soloPlan: { bots: number; level: BotLevel } | null = null;
+  /** The solo game running in this browser, if any. */
+  private localGame: LocalGame | null = null;
   /** Saved login, resent on every (re)connect so presence follows the socket. */
   private accountToken: string | null = null;
   /** The quick-match request, resent after a reconnect (the server drops the queue entry with the socket). */
@@ -172,6 +180,8 @@ export class GameClient {
     this.stopped = false;
     this.session = loadSession(this.deps.storage);
     this.accountToken = loadAccountToken(this.deps.storage);
+    const saved = loadLocal(this.deps.storage);
+    if (saved) this.startLocal((deps) => LocalGame.resume(deps, saved));
     this.set({
       restoring: !!this.session,
       accountPending: !!this.accountToken,
@@ -182,6 +192,8 @@ export class GameClient {
 
   stop(): void {
     this.stopped = true;
+    this.localGame?.detach();
+    this.localGame = null;
     if (this.timer !== null) this.deps.clearTimeout(this.timer);
     this.timer = null;
     const ws = this.ws;
@@ -275,10 +287,10 @@ export class GameClient {
           this.session = { ...this.session, hostId: msg.lobby.hostId };
           saveSession(this.deps.storage, this.session);
         }
-        this.runSoloPlan(msg.lobby);
         return;
       case 'game':
         this.rejoined();
+        if (this.localGame) return;
         this.onGame(msg);
         return;
       case 'account':
@@ -388,17 +400,28 @@ export class GameClient {
     this.queue = this.queue.filter((m) => m.t === 'create' || m.t === 'join' || isSocialMessage(m));
     // Replaced: another tab or device holds the seat now and may share this storage, so leave it alone.
     if (notice !== 'replaced') clearSession(this.deps.storage);
-    this.soloPlan = null;
     this.set({ seatId: null, code: null, hostId: null, lobby: null, game: null, prevView: null, duels: null, acting: false, restoring: false, notice });
     this.flushQueue();
   }
 
-  private runSoloPlan(lobby: LobbyState): void {
-    const plan = this.soloPlan;
-    if (!plan || lobby.hostId !== this.state.seatId || lobby.seats.length !== 1) return;
-    this.soloPlan = null;
-    for (let i = 0; i < plan.bots; i++) this.send({ t: 'addBot', level: plan.level });
-    this.send({ t: 'start' });
+  // ---------- solo games in this browser ----------
+
+  private startLocal(make: (deps: LocalDeps) => LocalGame): void {
+    this.localGame?.stop();
+    this.localGame = null;
+    this.set({ local: true, seatId: LOCAL_SEAT, code: LOCAL_CODE, hostId: LOCAL_SEAT, lobby: null, game: null, prevView: null, duels: null, notice: null, error: null });
+    this.localGame = make({
+      storage: this.deps.storage,
+      setTimeout: this.deps.setTimeout,
+      clearTimeout: this.deps.clearTimeout,
+      emit: (msg) => this.onGame(msg),
+    });
+  }
+
+  private endLocal(): void {
+    this.localGame?.stop();
+    this.localGame = null;
+    this.set({ local: false, seatId: null, code: null, hostId: null, game: null, prevView: null, duels: null, acting: false, notice: 'left' });
   }
 
   // ---------- sending ----------
@@ -426,10 +449,9 @@ export class GameClient {
     this.send({ t: 'join', code, name });
   }
 
-  /** Create a room, fill it with bots and start as soon as the lobby arrives. */
+  /** Play against bots right here in the browser: no server needed, so it starts at once and works offline. */
   solo(name: string, bots: number, level: BotLevel): void {
-    this.soloPlan = { bots, level };
-    this.create(name);
+    this.startLocal((deps) => LocalGame.start(deps, name, bots, level));
   }
 
   /** Look for strangers to play with; size null means any table. */
@@ -454,6 +476,7 @@ export class GameClient {
   }
 
   leave(): void {
+    if (this.localGame) return this.endLocal();
     this.send({ t: 'leave' });
   }
 
@@ -484,16 +507,31 @@ export class GameClient {
   /** Send one pick; further picks are ignored until the server answers. */
   act(action: Action): void {
     if (this.state.acting || !this.state.game) return;
+    if (this.localGame) {
+      const err = this.localGame.act(action);
+      if (err) this.set({ error: { code: 'illegal_action', message: err }, acting: false });
+      return;
+    }
     this.set({ acting: true });
     this.send({ t: 'act', action });
   }
 
   rematch(): void {
+    if (this.localGame) {
+      // Straight into a new game: there is no lobby to gather in when everyone else is a bot.
+      this.set({ game: null, prevView: null, duels: null });
+      return this.localGame.rematch();
+    }
     this.send({ t: 'rematch' });
   }
 
   /** Send a quick reaction now, or not at all: a stale cheer after a reconnect would be odd. */
   react(reaction: ReactionId): void {
+    const g = this.state.game;
+    if (this.localGame && g) {
+      this.reactionListeners.forEach((f) => f({ seatId: LOCAL_SEAT, seat: g.view.me, reaction }));
+      return;
+    }
     if (this.state.seatId && this.ws?.readyState === OPEN && !this.rejoinPending) this.raw({ t: 'react', reaction });
   }
 

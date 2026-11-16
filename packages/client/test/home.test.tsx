@@ -24,11 +24,12 @@ describe('Home', () => {
     expect(h.sock().sent).toEqual([{ t: 'join', code: 'MOON-17', name: 'Bob' }]);
   });
 
-  it('solo sends create', () => {
+  it('solo starts a game in the browser without asking the server', () => {
     const h = renderApp();
     typeName('Ana');
     fireEvent.click(screen.getByRole('button', { name: 'Play solo' }));
-    expect(h.sock().sent).toEqual([{ t: 'create', name: 'Ana' }]);
+    expect(h.sock().sent).toEqual([]);
+    expect(screen.getByText('Term I')).toBeTruthy();
   });
 
   it('buttons disabled without a name', () => {

@@ -155,21 +155,14 @@ describe('GameClient', () => {
     expect(h.client.getState()).toMatchObject({ acting: false, error: { code: 'illegal_action' } });
   });
 
-  it('solo adds bots and starts', () => {
+  it('solo runs in the browser and sends nothing to the server', () => {
     const h = harness();
     h.client.start();
     h.sock().open();
     h.client.solo('Ana', 3, 'hard');
-    h.sock().receive({ t: 'joined', code: 'WAND-42', seatId: 's1', token: 'tok' });
-    h.sock().receive({ t: 'lobby', lobby: lobby(1) });
-    h.sock().receive({ t: 'lobby', lobby: lobby(2) });
-    expect(h.sock().sent).toEqual([
-      { t: 'create', name: 'Ana' },
-      { t: 'addBot', level: 'hard' },
-      { t: 'addBot', level: 'hard' },
-      { t: 'addBot', level: 'hard' },
-      { t: 'start' },
-    ]);
+    expect(h.sock().sent).toEqual([]);
+    expect(h.client.getState()).toMatchObject({ local: true, seatId: 's1' });
+    expect(h.client.getState().game!.seats).toHaveLength(4);
   });
 
   it('keeps the previous view and the host id for the game', () => {

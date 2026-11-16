@@ -65,9 +65,9 @@ export function useGameFx(view: PlayerView | undefined, motion: boolean, launch:
   return fx;
 }
 
-/** Fly my just-built card from where it was in the hand to its chip in my built row (CSS does the motion). */
+/** Fly my just-built card from where it was in the hand into the "Built N" tally of my academy panel (CSS does the motion). */
 function flyBuilt(from: NonNullable<Launch>): void {
-  const el = [...document.querySelectorAll<HTMLElement>('.me-built [data-uid]')].find((e) => e.dataset.uid === from.uid);
+  const el = document.querySelector<HTMLElement>('.me [data-fly-target]');
   if (!el) return;
   const r = el.getBoundingClientRect();
   el.style.setProperty('--fly-x', `${Math.round(from.x - (r.left + r.width / 2))}px`);

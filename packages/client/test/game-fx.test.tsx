@@ -34,11 +34,9 @@ describe('pass direction', () => {
     expect(passDirection(viewFor({ ...s, term: 2 }, 2)).to).toBe(0);
   });
 
-  it('shows who gets my hand, on the arrow and on the neighbour panels', () => {
+  it('shows on the neighbour panels who gets my hand and who passes to me', () => {
     inGame(gameMsg(s, 0));
-    const arrow = document.querySelector('.pass-arrow')!;
-    expect(arrow.textContent).toContain('Cards pass to Cleo');
-    expect(arrow.getAttribute('data-side')).toBe('left');
+    expect(document.querySelector('.pass-arrow')).toBeNull();
     const [left, right] = [...document.querySelectorAll('.neighbors .neighbor')];
     expect(left.querySelector('[data-pass]')!.getAttribute('data-pass')).toBe('gets');
     expect(right.querySelector('[data-pass]')!.getAttribute('data-pass')).toBe('gives');
@@ -46,10 +44,8 @@ describe('pass direction', () => {
 
   it('flips to the right neighbour in Term II', () => {
     inGame(gameMsg({ ...s, term: 2 }, 0));
-    const arrow = document.querySelector('.pass-arrow')!;
-    expect(arrow.textContent).toContain('Cards pass to Bob');
-    expect(arrow.getAttribute('data-side')).toBe('right');
     expect(screen.getByText('gets your hand').closest('.neighbor')!.textContent).toContain('Bob');
+    expect(screen.getByText('passes to you').closest('.neighbor')!.textContent).toContain('Cleo');
   });
 });
 
@@ -57,32 +53,36 @@ describe('built cards', () => {
   const built = withBuilt(s, [0, 1, 2]);
   const nameOf = (seat: number) => cardDef(built.players[seat].built[0].defId).name;
 
-  it('my own built card opens its card info', () => {
+  it('are not listed on the main screen, only inside the player sheets', () => {
     inGame(gameMsg(built, 0));
-    const mine = screen.getByRole('list', { name: 'Built cards of Ana' });
-    fireEvent.click(within(mine).getByRole('button', { name: `About ${nameOf(0)}` }));
+    expect(document.querySelector('.built-chip, .built-row')).toBeNull();
+    expect(screen.queryByRole('button', { name: `About ${nameOf(1)}` })).toBeNull();
+  });
+
+  it('my own built card opens its card info from my sheet', () => {
+    inGame(gameMsg(built, 0));
+    fireEvent.click(document.querySelector('button.me')!);
+    const panel = screen.getByRole('dialog', { name: 'Ana' });
+    fireEvent.click(within(panel).getByRole('button', { name: `About ${nameOf(0)}` }));
     expect(screen.getByRole('dialog', { name: nameOf(0) })).toBeTruthy();
   });
 
-  it("a neighbour's built card opens its card info", () => {
+  it("a neighbour's built card opens its card info from their sheet", () => {
     inGame(gameMsg(built, 0));
-    const bob = screen.getByRole('list', { name: 'Built cards of Bob' });
-    fireEvent.click(within(bob).getByRole('button', { name: `About ${nameOf(1)}` }));
-    expect(screen.getByRole('dialog', { name: nameOf(1) })).toBeTruthy();
-    expect(screen.queryByRole('dialog', { name: 'Bob' })).toBeNull();
-  });
-
-  it("every player's built cards are tappable in the Table sheet and the player sheet", () => {
-    inGame(gameMsg(built, 0));
-    fireEvent.click(screen.getByRole('button', { name: 'Table' }));
-    const table = screen.getByRole('dialog', { name: 'Table' });
-    fireEvent.click(within(within(table).getByRole('list', { name: 'Built cards of Cleo' })).getByRole('button', { name: `About ${nameOf(2)}` }));
-    expect(screen.getByRole('dialog', { name: nameOf(2) })).toBeTruthy();
-    fireEvent.click(within(screen.getByRole('dialog', { name: nameOf(2) })).getByRole('button', { name: 'Close' }));
-    fireEvent.click(within(table).getAllByRole('button').find((b) => b.classList.contains('neighbor') && b.textContent!.includes('Bob'))!);
+    fireEvent.click(screen.getByText('Bob').closest('button')!);
     const panel = screen.getByRole('dialog', { name: 'Bob' });
     fireEvent.click(within(panel).getByRole('button', { name: `About ${nameOf(1)}` }));
     expect(screen.getByRole('dialog', { name: nameOf(1) })).toBeTruthy();
+  });
+
+  it("any player's sheet opens from the Table sheet", () => {
+    inGame(gameMsg(built, 0));
+    fireEvent.click(screen.getByRole('button', { name: 'Table' }));
+    const table = screen.getByRole('dialog', { name: 'Table' });
+    fireEvent.click(within(table).getAllByRole('button').find((b) => b.classList.contains('neighbor') && b.textContent!.includes('Cleo'))!);
+    const panel = screen.getByRole('dialog', { name: 'Cleo' });
+    fireEvent.click(within(panel).getByRole('button', { name: `About ${nameOf(2)}` }));
+    expect(screen.getByRole('dialog', { name: nameOf(2) })).toBeTruthy();
   });
 });
 
@@ -92,7 +92,7 @@ describe('card animations', () => {
   it("highlight a neighbour's new card and slide the new hand in from the passing side", () => {
     const h = inGame(gameMsg(s, 0));
     act(() => h.sock().receive(gameMsg(next, 0)));
-    expect(document.querySelectorAll('.built-chip.fresh')).toHaveLength(1);
+    expect(document.querySelectorAll('.neighbor.fresh-glow')).toHaveLength(1);
     act(() => h.sock().receive(gameMsg({ ...next, turn: 2 }, 0)));
     // Term I passes left, so my next hand comes from the right.
     expect(document.querySelector('.hand')!.className).toContain('slide-from-right');
@@ -105,6 +105,6 @@ describe('card animations', () => {
     expect(document.documentElement.classList.contains('no-anim')).toBe(true);
     act(() => h.sock().receive(gameMsg(next, 0)));
     act(() => h.sock().receive(gameMsg({ ...withBuilt(next, [0]), turn: 2, term: 2 }, 0)));
-    expect(document.querySelector('.built-chip.fresh, .slide-from-left, .slide-from-right, .coin-pop, .tuck-card, .pass-glyph.flip')).toBeNull();
+    expect(document.querySelector('.fresh-glow, .slide-from-left, .slide-from-right, .coin-pop, .tuck-card, .built-tally.fly')).toBeNull();
   });
 });

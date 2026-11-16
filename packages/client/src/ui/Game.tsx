@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import type { PublicPlayer } from '@arcane/engine';
 import type { SeatStatus } from '@arcane/protocol';
 import { duelPowerOf, handOptions, neighbors, passDirection, productionOf, researchOf, towerOf, tradeCost, waitingFor } from '../game/derive';
-import { BuiltRow } from './Built';
 import { CardInfo } from './CardInfo';
 import { CardView } from './CardView';
 import { useClient, useClientState, useT } from './context';
@@ -62,7 +61,7 @@ export function Game({ onSettings, onRules }: { onSettings(): void; onRules(): v
   const pass = passDirection(view);
   const passHint = (seat: number) => (seat === pass.to ? 'gets' : seat === pass.from ? 'gives' : undefined);
   const showPass = view.phase !== 'ended' && !game.result;
-  /** Remember where the chosen card is, so it can fly to my built row once the turn resolves. */
+  /** Remember where the chosen card is, so it can fly into my academy panel once the turn resolves. */
   const markLaunch = (uid: string) => {
     const el = [...document.querySelectorAll<HTMLElement>('[data-testid="card"]')].find((e) => e.dataset.uid === uid);
     const r = el?.getBoundingClientRect();
@@ -90,14 +89,13 @@ export function Game({ onSettings, onRules }: { onSettings(): void; onRules(): v
 
       <section className="neighbors">
         <Neighbor side={t('left')} player={view.players[left]} status={seats[left]} reaction={bySeat.get(left)} onClick={() => setInspect(left)}
-          onInfo={setInfo} fresh={fx.fresh} pass={showPass ? passHint(left) : undefined} at="left" />
+          fresh={fx.fresh} pass={showPass ? passHint(left) : undefined} at="left" />
         <button className="table-btn" onClick={() => setTable(true)}>
           {t('table')}
         </button>
         <Neighbor side={t('right')} player={view.players[right]} status={seats[right]} reaction={bySeat.get(right)} onClick={() => setInspect(right)}
-          onInfo={setInfo} fresh={fx.fresh} pass={showPass ? passHint(right) : undefined} at="right" />
+          fresh={fx.fresh} pass={showPass ? passHint(right) : undefined} at="right" />
       </section>
-      {showPass && <PassArrow side={pass.side} name={nameOf(pass.to)} fx={fx} covered={!!duels} />}
       {elsewhere.length > 0 && (
         <p className="react-strip">
           {elsewhere.map((r) => (
@@ -127,7 +125,7 @@ export function Game({ onSettings, onRules }: { onSettings(): void; onRules(): v
           </span>
           <ResearchView counts={research} />
           <span>{`${t('tower')} ${t('stageOf', { built: tower.built, total: tower.total })}`}</span>
-          <span>{`${t('built')} ${me.built.length}`}</span>
+          <span className="built-tally" data-fly-target>{`${t('built')} ${me.built.length}`}</span>
           <FamilyCounts player={me} />
         </span>
         <span className="me-row small">
@@ -141,7 +139,6 @@ export function Game({ onSettings, onRules }: { onSettings(): void; onRules(): v
           )}
         </span>
       </button>
-      <BuiltRow className="me-built" player={me} name={nameOf(view.me)} onInfo={setInfo} fresh={fx.fresh} />
 
       <p className="status" role="status">
         {status}
@@ -187,7 +184,7 @@ export function Game({ onSettings, onRules }: { onSettings(): void; onRules(): v
             <h3>{t('table')}</h3>
             {view.players.map((p) => (
               <Neighbor key={p.seat} side={p.seat === view.me ? t('you') : ''} player={p} status={seats[p.seat]} reaction={bySeat.get(p.seat)} onClick={() => (setTable(false), setInspect(p.seat))}
-                onInfo={setInfo} fresh={fx.fresh} />
+                fresh={fx.fresh} />
             ))}
             <button onClick={() => setTable(false)}>{t('close')}</button>
           </section>
@@ -224,33 +221,12 @@ export function Game({ onSettings, onRules }: { onSettings(): void; onRules(): v
   );
 }
 
-/**
- * "Cards pass to Bob": who gets my hand after this turn. The arrow flips with a short turn when the Term changes,
- * replayed once the Term-duels sheet that covers it is closed.
- */
-function PassArrow({ side, name, fx, covered }: { side: 'left' | 'right'; name: string; fx: GameFx; covered: boolean }) {
-  const t = useT();
-  const glyph = (
-    <span key={fx.termChanged ? `${fx.id}${covered ? '-covered' : ''}` : 'glyph'} className={`pass-glyph${fx.termChanged ? ' flip' : ''}`} aria-hidden="true">
-      ➜
-    </span>
-  );
-  return (
-    <p className={`pass-arrow to-${side}`} data-side={side}>
-      {side === 'left' && glyph}
-      <span>{t('passTo', { name })}</span>
-      {side === 'right' && glyph}
-    </p>
-  );
-}
-
 function Neighbor(props: {
   side: string;
   player: PublicPlayer;
   status?: SeatStatus;
   reaction?: ShownReaction;
   onClick(): void;
-  onInfo(defId: string): void;
   fresh: ReadonlySet<string>;
   pass?: 'gets' | 'gives';
   at?: 'left' | 'right';
@@ -263,9 +239,11 @@ function Neighbor(props: {
     .join(' · ');
   // The arrow points the way the cards travel: from me to the neighbour who gets my hand, towards me from the one who gives.
   const toward = props.pass === 'gets' ? props.at : props.at === 'left' ? 'right' : 'left';
+  // A new card on this player's table: the panel glows once (their cards are listed in the player sheet).
+  const fresh = p.built.some((c) => props.fresh.has(c.uid));
   return (
     <div className="neighbor-col">
-    <button className="neighbor" onClick={props.onClick}>
+    <button className={`neighbor${fresh ? ' fresh-glow' : ''}`} onClick={props.onClick}>
       <span className="neighbor-top">
         <Crest academyId={p.academyId} size={22} />
         <span className="muted small">{props.side}</span>
@@ -298,7 +276,6 @@ function Neighbor(props: {
         </span>
       )}
     </button>
-    <BuiltRow player={p} name={name} onInfo={props.onInfo} fresh={props.fresh} />
     </div>
   );
 }

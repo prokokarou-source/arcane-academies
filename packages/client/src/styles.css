@@ -528,54 +528,29 @@ button.link.react-btn { font-size: 1.15rem; min-width: 40px; text-decoration: no
 }
 
 /* Game screen: pass direction, tappable built cards and short card animations (transform/opacity only, ≤400 ms). */
-.pass-arrow {
-  display: flex; align-items: center; justify-content: center; gap: 8px; margin: 0; padding: 4px 12px; align-self: center;
-  border-radius: 999px; background: rgba(232, 181, 74, 0.1); border: 1px solid var(--line-gold); color: var(--gold); font-weight: 600; font-size: 0.9rem;
-}
 .pass-glyph { display: inline-block; font-size: 1.15em; line-height: 1; }
 .to-left > .pass-glyph { transform: scaleX(-1); }
-.pass-arrow .pass-glyph.flip { animation: pass-flip 0.4s var(--ease) both; }
-.to-left > .pass-glyph.flip { animation-name: pass-flip-left; }
-@keyframes pass-flip { from { transform: scaleX(-1); opacity: 0.3; } to { transform: scaleX(1); opacity: 1; } }
-@keyframes pass-flip-left { from { transform: scaleX(1); opacity: 0.3; } to { transform: scaleX(-1); opacity: 1; } }
 .pass-hint { display: inline-flex; align-items: center; gap: 4px; font-size: 0.72rem; color: var(--muted); }
 .pass-hint.gets { color: var(--gold); }
 .pass-hint .pass-glyph { font-size: 1em; }
 .neighbor-col { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .neighbor-col > .neighbor { flex: 1; }
 
-.built-row {
-  list-style: none; margin: 0; padding: 2px 0 4px; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
-}
-.built-row::-webkit-scrollbar { display: none; }
-.built-group { display: flex; align-items: center; gap: 3px; flex: none; }
-.built-count { color: var(--fam); font-size: 0.75rem; padding: 0 2px; }
-button.built-chip {
-  display: inline-flex; align-items: center; gap: 4px; flex: none; min-height: 32px; max-width: 9.5em; padding: 0 8px 0 6px;
-  border-radius: 8px; border: 1px solid var(--fam); border-left-width: 5px; background: var(--night); color: var(--text);
-  font-family: var(--serif); font-weight: 500; font-size: 0.8rem; box-shadow: none;
-}
-.built-chip .fam-icon { color: var(--fam); }
-.built-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.neighbor-col .built-chip { max-width: 7.5em; min-height: 30px; font-size: 0.74rem; }
-.me-built { margin: -2px 0 0; }
 .sheet .neighbor-col { gap: 2px; }
 .chips button.chip { min-height: 32px; box-shadow: none; font-weight: 400; }
 
-/* Build: the card flies from the hand to its chip. */
-.built-chip.fly { animation: built-fly 0.4s var(--ease) both; }
+/* Build: the card flies from the hand into the "Built N" tally of my panel. */
+.built-tally { display: inline-block; }
+.built-tally.fly { animation: built-fly 0.4s var(--ease) both; }
 @keyframes built-fly {
   from { transform: translate(var(--fly-x, 0), var(--fly-y, 80px)) scale(1.8); opacity: 0.4; }
   to { transform: none; opacity: 1; }
 }
-/* Someone else's new card: a short pulse with a glow drawn by a pseudo-element (opacity only). */
-.built-chip { position: relative; }
-.built-chip.fresh { animation: built-fresh 0.4s ease-out both; }
-.built-chip.fresh::after {
-  content: ""; position: absolute; inset: -3px; border-radius: 10px; box-shadow: 0 0 10px 2px var(--fam); pointer-events: none;
-  animation: glow-out 0.4s ease-out both;
+/* Someone else's new card: their panel glows once (drawn by a pseudo-element, opacity only). */
+.neighbor.fresh-glow::after {
+  content: ""; position: absolute; inset: -2px; border-radius: inherit; box-shadow: 0 0 14px 3px rgba(232, 181, 74, 0.6); pointer-events: none;
+  animation: glow-out 0.5s ease-out both;
 }
-@keyframes built-fresh { 0% { transform: scale(0.6); opacity: 0; } 70% { transform: scale(1.12); opacity: 1; } 100% { transform: none; } }
 @keyframes glow-out { from { opacity: 1; } to { opacity: 0; } }
 
 /* Tower: a card tucks under the strip and the level glows. */

@@ -44,7 +44,7 @@ export function Home(props: { initialRoom?: string; onRules(): void; onSettings(
       </header>
 
       {account ? (
-        <section className="panel row">
+        <section className="panel row account-row">
           <button className="link" onClick={props.onAccount}>
             {t('signedInAs', { name: account })}
           </button>
@@ -67,7 +67,7 @@ export function Home(props: { initialRoom?: string; onRules(): void; onSettings(
       )}
 
       <section className="panel">
-        <div className="row">
+        <div className="row end">
           <label className="field small">
             <span>{t('quickSize')}</span>
             <select
@@ -94,12 +94,12 @@ export function Home(props: { initialRoom?: string; onRules(): void; onSettings(
             {t('quickMatch')}
           </button>
         </div>
-        <p className="muted small">{t('quickHint')}</p>
+        <p className="hint">{t('quickHint')}</p>
       </section>
 
       <section className="panel">
         <button
-          className="primary"
+          className="gold"
           disabled={!nameOk}
           onClick={() => {
             remember();
@@ -108,30 +108,29 @@ export function Home(props: { initialRoom?: string; onRules(): void; onSettings(
         >
           {t('createGame')}
         </button>
-      </section>
-
-      <section className="panel row">
-        <input
-          aria-label={t('roomCode')}
-          placeholder={t('roomCode')}
-          value={code}
-          maxLength={16}
-          autoCapitalize="characters"
-          onChange={(e) => setCode(e.target.value.toUpperCase())}
-        />
-        <button
-          disabled={!nameOk || code.trim().length === 0}
-          onClick={() => {
-            remember();
-            client.join(code.trim(), trimmed);
-          }}
-        >
-          {t('join')}
-        </button>
+        <div className="row">
+          <input
+            aria-label={t('roomCode')}
+            placeholder={t('roomCode')}
+            value={code}
+            maxLength={16}
+            autoCapitalize="characters"
+            onChange={(e) => setCode(e.target.value.toUpperCase())}
+          />
+          <button
+            disabled={!nameOk || code.trim().length === 0}
+            onClick={() => {
+              remember();
+              client.join(code.trim(), trimmed);
+            }}
+          >
+            {t('join')}
+          </button>
+        </div>
       </section>
 
       <section className="panel">
-        <div className="row">
+        <div className="row end">
           <label className="field small">
             <span>{t('bots')}</span>
             <select aria-label={t('bots')} value={bots} onChange={(e) => setBots(Number(e.target.value))}>

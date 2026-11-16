@@ -3,6 +3,7 @@ import { ACADEMIES } from '@arcane/engine';
 import type { Family } from '@arcane/engine';
 import type { StringKey } from '../i18n/strings';
 import { useT } from './context';
+import { ScreenHead } from './ScreenHead';
 
 /**
  * Beginner rules (English only, like the rest of the game UI). Every number here comes from the engine:
@@ -41,7 +42,7 @@ export function Rules({ onBack }: { onBack(): void }) {
   const res = (r: string) => t(`res_${r}` as StringKey);
   return (
     <main className="screen rules">
-      <h2>{t('rules')}</h2>
+      <ScreenHead title={t('rules')} onBack={onBack} />
       <p className="rules-lead">
         Lead a school of magic. Over three Terms you pick cards, build up your academy and raise its tower. After Term III the player with the most{' '}
         <strong>Renown</strong> wins.
@@ -243,7 +244,6 @@ export function Rules({ onBack }: { onBack(): void }) {
         </ul>
       </Section>
 
-      <button onClick={onBack}>{t('back')}</button>
     </main>
   );
 }

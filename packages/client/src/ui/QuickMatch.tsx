@@ -28,6 +28,11 @@ export function QuickMatch() {
   return (
     <main className="screen center quick">
       <h2>{t('quickMatch')}</h2>
+      <div className="seek" aria-hidden="true">
+        <span />
+        <span />
+        <span />
+      </div>
       <p className="status" role="status">
         {t('quickSearching')}
       </p>

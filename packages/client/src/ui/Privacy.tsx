@@ -1,4 +1,5 @@
 import { useT } from './context';
+import { ScreenHead } from './ScreenHead';
 
 export const ISSUES_URL = 'https://github.com/prokokarou-source/arcane-academies/issues';
 
@@ -7,7 +8,7 @@ export function Privacy({ onBack }: { onBack(): void }) {
   const t = useT();
   return (
     <main className="screen rules">
-      <h2>{t('privacy')}</h2>
+      <ScreenHead title={t('privacy')} onBack={onBack} />
       <p className="rules-lead">Arcane Academies keeps as little about you as it can. You can always play as a guest without an account.</p>
 
       <h3>What we store</h3>
@@ -51,8 +52,6 @@ export function Privacy({ onBack }: { onBack(): void }) {
         </a>
         .
       </p>
-
-      <button onClick={onBack}>{t('back')}</button>
     </main>
   );
 }

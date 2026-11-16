@@ -65,14 +65,14 @@ export function Game({ onSettings, onRules }: { onSettings(): void; onRules(): v
           <Icon name="coin" />
         </span>
         <ReactionButton />
-        <button className="link small" aria-label={t('menu')} onClick={() => setMenu('open')}>
+        <button className="link icon-btn" aria-label={t('menu')} onClick={() => setMenu('open')}>
           ☰
         </button>
       </header>
 
       <section className="neighbors">
         <Neighbor side={t('left')} player={view.players[left]} status={seats[left]} reaction={bySeat.get(left)} onClick={() => setInspect(left)} />
-        <button className="link small" onClick={() => setTable(true)}>
+        <button className="table-btn" onClick={() => setTable(true)}>
           {t('table')}
         </button>
         <Neighbor side={t('right')} player={view.players[right]} status={seats[right]} reaction={bySeat.get(right)} onClick={() => setInspect(right)} />

@@ -25,6 +25,10 @@ export function App({ initialRoom, initialPage }: { initialRoom?: string; initia
   const online = useOnline();
   const update = useUpdate();
   const [prefs] = usePrefs();
+  // The Animations setting turns off every transition and animation, like the system's reduced motion.
+  useEffect(() => {
+    document.documentElement.classList.toggle('no-anim', !prefs.animations);
+  }, [prefs.animations]);
   // Before a room, a connection that takes more than a moment means the host is waking up.
   const [slow, setSlow] = useState(false);
   const open = state.conn === 'open';
@@ -55,7 +59,7 @@ export function App({ initialRoom, initialPage }: { initialRoom?: string; initia
   else if (state.restoring)
     screen = (
       <main className="screen center">
-        <p className="status">{t('connecting')}</p>
+        <p className="status loading">{t('connecting')}</p>
       </main>
     );
   else

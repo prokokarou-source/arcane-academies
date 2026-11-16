@@ -3,6 +3,7 @@ import { MAX_PASSWORD, MIN_PASSWORD, USERNAME_RE } from '@arcane/protocol';
 import { usePush } from '../pwa/context';
 import { useClient, useClientState, useT } from './context';
 import { PushToggle } from './PushToggle';
+import { ScreenHead } from './ScreenHead';
 
 /** Log in or create an account (username + password). Optional: guests can always play. */
 export function Account(props: { onBack(): void; onFriends(): void; onProfile(): void; onPrivacy?(): void }) {
@@ -17,12 +18,19 @@ export function Account(props: { onBack(): void; onFriends(): void; onProfile():
   if (account) {
     return (
       <main className="screen">
-        <h2>{t('account')}</h2>
-        <p>{t('signedInAs', { name: account })}</p>
-        <button className="primary" onClick={props.onProfile}>
-          {t('profile')}
-        </button>
-        <button onClick={props.onFriends}>{t('friends')}</button>
+        <ScreenHead title={t('account')} onBack={props.onBack} />
+        <section className="panel id-card">
+          <span className="avatar" aria-hidden="true">
+            {account.slice(0, 1).toUpperCase()}
+          </span>
+          <p className="who">{t('signedInAs', { name: account })}</p>
+          <div className="row stretch">
+            <button className="primary" onClick={props.onProfile}>
+              {t('profile')}
+            </button>
+            <button onClick={props.onFriends}>{t('friends')}</button>
+          </div>
+        </section>
         <PushToggle />
         <button
           onClick={async () => {
@@ -34,9 +42,6 @@ export function Account(props: { onBack(): void; onFriends(): void; onProfile():
           {t('logOut')}
         </button>
         <ManageAccount />
-        <button className="link" onClick={props.onBack}>
-          {t('back')}
-        </button>
       </main>
     );
   }
@@ -51,7 +56,7 @@ export function Account(props: { onBack(): void; onFriends(): void; onProfile():
 
   return (
     <main className="screen">
-      <h2>{mode === 'login' ? t('signIn') : t('signUp')}</h2>
+      <ScreenHead title={mode === 'login' ? t('signIn') : t('signUp')} onBack={props.onBack} />
       <p className="muted small">{t('guestNote')}</p>
       <form
         className="panel"
@@ -108,9 +113,6 @@ export function Account(props: { onBack(): void; onFriends(): void; onProfile():
       >
         {mode === 'login' ? t('needAccount') : t('haveAccount')}
       </button>
-      <button className="link" onClick={props.onBack}>
-        {t('back')}
-      </button>
     </main>
   );
 }
@@ -135,7 +137,7 @@ function ManageAccount() {
         </div>
       )}
       <form
-        className="panel"
+        className="subpanel"
         onSubmit={(e) => {
           e.preventDefault();
           if (!canChange) return;
@@ -183,7 +185,7 @@ function ManageAccount() {
         </button>
       ) : (
         <form
-          className="panel"
+          className="subpanel"
           onSubmit={(e) => {
             e.preventDefault();
             if (!deletePassword || accountPending) return;
@@ -191,7 +193,7 @@ function ManageAccount() {
             setDeletePassword('');
           }}
         >
-          <p className="small">{t('deleteWarning')}</p>
+          <p className="small danger-text">{t('deleteWarning')}</p>
           <label className="field">
             <span>{t('password')}</span>
             <input

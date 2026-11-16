@@ -3,6 +3,7 @@ import type { LeaderRow } from '@arcane/protocol';
 import { USERNAME_RE } from '@arcane/protocol';
 import { useClient, useClientState, useT } from './context';
 import { PushToggle } from './PushToggle';
+import { ScreenHead } from './ScreenHead';
 
 /** Friend list with online status, requests, and (inside a lobby) invites. */
 export function Friends(props: { onBack(): void; onAccount(): void }) {
@@ -16,12 +17,9 @@ export function Friends(props: { onBack(): void; onAccount(): void }) {
   if (!account) {
     return (
       <main className="screen">
-        <h2>{t('friends')}</h2>
+        <ScreenHead title={t('friends')} onBack={props.onBack} />
         <button className="primary" onClick={props.onAccount}>
           {t('signInOrUp')}
-        </button>
-        <button className="link" onClick={props.onBack}>
-          {t('back')}
         </button>
       </main>
     );
@@ -37,7 +35,7 @@ export function Friends(props: { onBack(): void; onAccount(): void }) {
 
   return (
     <main className="screen">
-      <h2>{t('friends')}</h2>
+      <ScreenHead title={t('friends')} onBack={props.onBack} />
       <p className="muted small">{t('signedInAs', { name: account })}</p>
       <div className="row tabs" role="tablist">
         <button role="tab" aria-selected={tab === 'list'} className={tab === 'list' ? 'primary' : ''} onClick={() => setTab('list')}>
@@ -102,7 +100,7 @@ export function Friends(props: { onBack(): void; onAccount(): void }) {
           )}
 
           <ul className="seats" aria-label={t('friends')}>
-            {list.friends.length === 0 && <li className="muted small">{t('noFriends')}</li>}
+            {list.friends.length === 0 && <li className="empty">{t('noFriends')}</li>}
             {list.friends.map((f) => (
               <li key={f.username} className="seat">
                 <div className="seat-top">
@@ -148,9 +146,6 @@ export function Friends(props: { onBack(): void; onAccount(): void }) {
 
       <PushToggle />
 
-      <button className="link" onClick={props.onBack}>
-        {t('back')}
-      </button>
     </main>
   );
 }
@@ -164,7 +159,7 @@ function Leaderboard() {
   const { leaderboard, friends } = useClientState();
   // Fetch when opened and again whenever the friend list changes.
   useEffect(() => client.requestLeaderboard(), [client, friends]);
-  if (!leaderboard) return <p className="status">{t('loadingStats')}</p>;
+  if (!leaderboard) return <p className="status loading">{t('loadingStats')}</p>;
   return (
     <ol className="seats" aria-label={t('leaderboard')}>
       {leaderboard.map((r, i) => (
@@ -172,8 +167,10 @@ function Leaderboard() {
           <div className="seat-top">
             <span className="rank">{i + 1}</span>
             <span className="name">{r.me ? `${r.username} (${t('you')})` : r.username}</span>
-            <span className="small">{`${t('statWins')}: ${r.wins}`}</span>
-            <span className="muted small">{`${winRate(r)}% · ${t('statGames')}: ${r.games}`}</span>
+            <span className="lb-stats">
+              <span className="small">{`${t('statWins')}: ${r.wins}`}</span>
+              <span className="muted small">{`${winRate(r)}% · ${t('statGames')}: ${r.games}`}</span>
+            </span>
           </div>
         </li>
       ))}

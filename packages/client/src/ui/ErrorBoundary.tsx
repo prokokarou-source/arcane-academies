@@ -25,7 +25,10 @@ export class ErrorBoundary extends Component<Props, { failed: boolean }> {
   render() {
     if (!this.state.failed) return this.props.children;
     return (
-      <main className="screen center" role="alert">
+      <main className="screen center crash" role="alert">
+        <span className="crash-mark" aria-hidden="true">
+          ✦
+        </span>
         <h2>{en.crashTitle}</h2>
         <p className="muted">{en.crashBody}</p>
         <button className="primary" onClick={this.props.onReload ?? (() => location.reload())}>

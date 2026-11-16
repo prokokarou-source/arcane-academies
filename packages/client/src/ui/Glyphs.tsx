@@ -99,6 +99,18 @@ export function EffectView({ effect: e }: { effect: Effect }) {
           <Scope scope={e.scope} />
         </span>
       );
+    case 'researchAny':
+      return (
+        <span className="glyphs num" title={t('eff_researchAny')}>
+          <Icon name="alchemy" />/<Icon name="astronomy" />/<Icon name="runes" />
+        </span>
+      );
+    case 'buildDiscard':
+      return (
+        <span className="glyphs num tag-mini" title={t('eff_buildDiscard')}>
+          ♻ {t('fromDiscard')}
+        </span>
+      );
   }
 }
 

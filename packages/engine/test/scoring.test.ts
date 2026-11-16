@@ -6,10 +6,14 @@ import { fixedGame, withBuilt, withCoins, withTower, seats } from './helpers';
 
 describe('scoring', () => {
   it('research', () => {
-    expect(scoreResearch({ alchemy: 3, astronomy: 2, runes: 1 }, false)).toBe(23);
-    expect(scoreResearch({ alchemy: 3, astronomy: 3, runes: 3 }, false)).toBe(51);
-    expect(scoreResearch({ alchemy: 0, astronomy: 0, runes: 0 }, false)).toBe(0);
-    expect(scoreResearch({ alchemy: 1, astronomy: 1, runes: 1 }, true)).toBe(15);
+    expect(scoreResearch({ alchemy: 3, astronomy: 2, runes: 1 })).toBe(23);
+    expect(scoreResearch({ alchemy: 3, astronomy: 3, runes: 3 })).toBe(51);
+    expect(scoreResearch({ alchemy: 0, astronomy: 0, runes: 0 })).toBe(0);
+  });
+
+  it('wild research symbols go where they score most', () => {
+    expect(scoreResearch({ alchemy: 2, astronomy: 2, runes: 1 }, 1)).toBe(scoreResearch({ alchemy: 2, astronomy: 2, runes: 2 }));
+    expect(scoreResearch({ alchemy: 0, astronomy: 0, runes: 0 }, 2)).toBe(4);
   });
 
   it('coins: 1 per 3', () => {
@@ -61,13 +65,9 @@ describe('scoring', () => {
     }
   });
 
-  it('the Verdant power is its own tower item', () => {
-    const s = withTower(withBuilt(fixedGame(), 2, ['t1-mandrake-bed']), 2, 2);
-    const items = finalScores(s)[2].items.filter((i) => i.cat === 'tower');
-    expect(items).toEqual([
-      { cat: 'tower', kind: 'stage', stage: 1, points: 3 },
-      { cat: 'tower', kind: 'power', power: 'verdantWhiteRenown', points: 1 },
-    ]);
+  it('Verdant A level 2 adds a wild research symbol to the score', () => {
+    const s = withTower(withBuilt(fixedGame(), 2, ['t1-herbalist-lab', 't1-stargazer-loft']), 2, 2);
+    expect(finalScores(s)[2].research).toBe(2 * 3 + 6);
   });
 
   it('archmage never wins', () => {

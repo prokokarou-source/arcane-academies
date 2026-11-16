@@ -83,7 +83,7 @@ export function Rules({ onBack }: { onBack(): void }) {
         <p>
           <strong>Passing:</strong> Terms I and III pass to the <strong>left</strong>. Term II passes to the <strong>right</strong>.
         </p>
-        <p>After 6 turns one card is left in each hand. It is thrown away, and then the duels happen.</p>
+        <p>After 6 turns one card is left in each hand. It is thrown away (Verdant Circle side B can play it), and then the duels happen.</p>
         <p>If the room has a turn timer and it runs out, a bot picks for you.</p>
       </Section>
 
@@ -147,23 +147,20 @@ export function Rules({ onBack }: { onBack(): void }) {
         <ul>
           <li>Each academy has a tower. You build its levels in order, from the bottom up.</li>
           <li>To build a level, pick any card, pay that level's cost (shown on your board) and the card goes under the tower.</li>
-          <li>Levels give Renown, and one level unlocks your academy's power.</li>
+          <li>Levels give Renown, coins, duel power, resources or a special ability. Coins come once, when the level is built.</li>
           <li>
-            Side <strong>A</strong> has 3 levels. Side <strong>B</strong> has 2 or 3 levels with different costs and rewards. Sides are set in the lobby.
+            Side <strong>A</strong> has 3 levels. Side <strong>B</strong> has 2 to 4 levels with different costs and rewards. Sides are set in the lobby.
           </li>
+          <li>Sold cards and the cards left at the end of each Term go to the discard pile. Some academies can build from it.</li>
           <li>You don't have to finish your tower.</li>
         </ul>
-        <h4>Academy powers</h4>
+        <h4>The academies</h4>
         <ul className="rules-powers">
-          {ACADEMIES.map((a) => {
-            const power = a.sides.A.find((st) => st.power)?.power;
-            return (
-              <li key={a.id}>
-                <strong>{a.name}</strong> <span className="muted">(home: {res(a.home)})</span>
-                {power && <> — {t(`power_${power}` as StringKey)}</>}
-              </li>
-            );
-          })}
+          {ACADEMIES.map((a) => (
+            <li key={a.id}>
+              <strong>{a.name}</strong> <span className="muted">(home: {res(a.home)})</span> — {t(`academy_${a.id}` as StringKey)}
+            </li>
+          ))}
         </ul>
       </Section>
 

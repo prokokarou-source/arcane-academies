@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { legalActions, submitAction, resolveTurn, allSubmitted, IllegalActionError } from '../src/actions';
 import type { Action, GameState } from '../src/types';
-import { fixedGame, withBuilt, withCoins, withHand, withTower } from './helpers';
+import { asAcademy, fixedGame, withBuilt, withCoins, withHand, withTower } from './helpers';
 
 const sellAll = (s: GameState, except: number[] = []) =>
   s.players.reduce((acc, p) => (except.includes(p.seat) ? acc : submitAction(acc, p.seat, { type: 'sell', cardUid: p.hand[0].uid })), s);
@@ -43,7 +43,7 @@ describe('actions', () => {
   });
 
   it('tower stage increments, applies effects, card hidden', () => {
-    let s = withBuilt(fixedGame(), 0, ['t1-moonwell-pit', 't1-moonwell-pit']); // pyromancy stage 1 needs moonstone 2
+    let s = withBuilt(fixedGame(), 0, ['t1-mandrake-bed', 't1-mandrake-bed']); // pyromancy stage 1 needs herbs 2
     const uid = s.players[0].hand[0].uid;
     s = submitAction(s, 0, legalActions(s, 0).find((a) => a.type === 'tower' && a.cardUid === uid)!);
     s = resolveTurn(sellAll(s, [0]));
@@ -89,40 +89,82 @@ describe('actions', () => {
     expect(allSubmitted(sellAll(s))).toBe(true);
   });
 
-  it('chronoKeep: keep a card, play it as a bonus turn next term', () => {
-    let s = fixedGame();
-    s = { ...s, players: s.players.map((p) => (p.seat === 0 ? { ...p, academyId: 'chronomancy' } : p)) };
-    s = withTower(s, 0, 2);
-    const keep = legalActions(s, 0).find((a) => a.type === 'chronoKeep')!;
-    expect(keep).toBeDefined();
-    s = resolveTurn(sellAll(submitAction(s, 0, keep), [0]));
-    expect(s.kept[0]?.uid).toBe(keep.cardUid);
-    expect(legalActions(s, 0).some((a) => a.type === 'chronoKeep')).toBe(false);
-    for (let t = 1; t < 6; t++) s = resolveTurn(sellAll(s));
-    expect(s.term).toBe(2);
+  it('playLastCard (Verdant B): the last card of the Term is played in a bonus turn', () => {
+    let s = asAcademy(fixedGame(), 2, 'verdant', 'B');
+    s = withTower(s, 2, 1);
+    for (let t = 1; t <= 6; t++) s = resolveTurn(sellAll(s));
     expect(s.phase).toBe('bonus');
-    expect(legalActions(s, 1)).toEqual([]);
-    expect(allSubmitted(s)).toBe(false);
-    const bonus = legalActions(s, 0).find((a) => a.type === 'sell')!;
-    expect(bonus.cardUid).toBe(keep.cardUid);
-    s = resolveTurn(submitAction(s, 0, bonus));
+    expect(s.term).toBe(1);
+    expect(legalActions(s, 0)).toEqual([]);
+    const last = s.kept[2]!;
+    const sell = legalActions(s, 2).find((a) => a.type === 'sell')!;
+    expect(sell.cardUid).toBe(last.uid);
+    s = resolveTurn(submitAction(s, 2, sell));
+    expect(s.term).toBe(2);
     expect(s.phase).toBe('picking');
-    expect(s.kept[0]).toBeNull();
-    expect(s.players[0].hand).toHaveLength(7);
+    expect(s.kept[2]).toBeNull();
+    expect(s.archive.map((c) => c.uid)).toContain(last.uid);
   });
 
-  it('shadowTax takes up to 2 coins from each neighbor', () => {
-    let s = fixedGame();
-    s = { ...s, players: s.players.map((p) => (p.seat === 0 ? { ...p, academyId: 'shadow' } : p)) };
-    s = withTower(s, 0, 1);
-    s = withBuilt(s, 0, ['t1-essence-still', 't1-moonwell-pit', 't1-moonwell-pit']);
-    s = withCoins(s, 1, 1);
-    const a = legalActions(s, 0).find((x) => x.type === 'tower')!;
-    expect(a).toBeDefined();
+  it('freeFirstTurn (Shadow B): turn 1 builds are free', () => {
+    let s = asAcademy(fixedGame(), 0, 'shadow', 'B');
+    s = withTower(withCoins(s, 0, 0), 0, 1);
+    s = withHand(s, 0, ['t1-candle-chapel', ...fill('t1-alms-box')]);
+    const a = find(s, 0, 'build', 't1-candle-chapel');
+    expect(a.type === 'build' && a.payment.free).toBe(true);
     s = resolveTurn(sellAll(submitAction(s, 0, a), [0]));
-    // seat1 had 1 coin, sold for +3 (applied with the turn), then the tax takes 2
-    expect(s.players[1].coins).toBe(1 + 3 - 2);
-    expect(s.players[0].coins).toBe(3 + 4);
+    expect(s.players[0].built.map((c) => c.defId)).toContain('t1-candle-chapel');
+    expect(s.players[0].coins).toBe(0);
+  });
+
+  it('freeNewFamily (Shadow A): free only for a family you do not own yet', () => {
+    let s = asAcademy(fixedGame(), 0, 'shadow', 'A');
+    s = withTower(withCoins(s, 0, 0), 0, 2);
+    s = withBuilt(s, 0, ['t1-reading-hall']); // a lore card
+    s = withHand(s, 0, ['t1-candle-chapel', 't1-practice-yard', ...Array(5).fill('t1-alms-box')]);
+    const lore = legalActions(s, 0).find((a) => a.type === 'build' && a.cardUid.startsWith('t1-candle-chapel#'));
+    const duel = find(s, 0, 'build', 't1-practice-yard');
+    expect(lore).toBeUndefined(); // lore owned, no coins to buy herbs
+    expect(duel.type === 'build' && duel.payment.free).toBe(true);
+  });
+
+  it('tower coins are paid when the level is built (Runeforge A level 2: 9 coins)', () => {
+    let s = asAcademy(fixedGame(), 0, 'runeforge', 'A');
+    s = withTower(withBuilt(s, 0, ['t1-mandrake-bed', 't1-mandrake-bed']), 0, 1);
+    const a = legalActions(s, 0).find((x) => x.type === 'tower')!;
+    s = resolveTurn(sellAll(submitAction(s, 0, a), [0]));
+    expect(s.players[0].towerStages).toBe(2);
+    expect(s.players[0].coins).toBe(3 + 9);
+  });
+
+  it('buildDiscard (Chronomancy A): build a discarded card free right after the level', () => {
+    let s = asAcademy(fixedGame(), 0, 'chronomancy', 'A');
+    s = withTower(withBuilt(s, 0, ['t1-starshard-kiln', 't1-dragon-roost']), 0, 1);
+    s = { ...s, archive: [{ uid: 't1-reading-hall#z', defId: 't1-reading-hall' }] };
+    const a = legalActions(s, 0).find((x) => x.type === 'tower')!;
+    s = resolveTurn(sellAll(submitAction(s, 0, a), [0]));
+    expect(s.phase).toBe('discard');
+    expect(legalActions(s, 1)).toEqual([]);
+    const picks = legalActions(s, 0);
+    expect(picks.every((p) => p.type === 'build' && p.payment.free)).toBe(true);
+    const pick = picks.find((p) => p.cardUid === 't1-reading-hall#z')!;
+    s = resolveTurn(submitAction(s, 0, pick));
+    expect(s.players[0].built.map((c) => c.uid)).toContain('t1-reading-hall#z');
+    expect(s.archive.map((c) => c.uid)).not.toContain('t1-reading-hall#z');
+    expect(s.phase).toBe('picking');
+    expect(s.turn).toBe(2);
+  });
+
+  it('buildDiscard is lost when the pile has nothing to take', () => {
+    let s = asAcademy(fixedGame(), 0, 'chronomancy', 'A');
+    s = withTower(withBuilt(s, 0, ['t1-starshard-kiln', 't1-dragon-roost']), 0, 1);
+    s = withHand(s, 1, ['t1-starshard-kiln', ...fill('t1-alms-box')]);
+    s = withHand(s, 2, ['t1-dragon-roost', ...fill('t1-alms-box')]);
+    const a = legalActions(s, 0).find((x) => x.type === 'tower')!;
+    // the others sell cards seat 0 already owns, so nothing in the pile can be taken
+    s = resolveTurn(sellAll(submitAction(s, 0, a), [0]));
+    expect(s.phase).toBe('picking');
+    expect(s.turn).toBe(2);
   });
 });
 

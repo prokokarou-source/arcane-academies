@@ -17,9 +17,9 @@ describe('duels', () => {
     expect(duelPower(s, 0)).toBe(3);
   });
 
-  it('pyroDuelBonus adds +1 per win', () => {
-    let s = withBuilt(fixedGame(), 0, ['t1-practice-yard']); // seat0 is pyromancy
-    s = withTower(s, 0, 2);
-    expect(resolveDuels(s, 1).duelTokens[0]).toEqual([2, 2]);
+  it('tower shields add duel power (Pyromancy A level 2: +2)', () => {
+    const s = withTower(fixedGame(), 0, 2); // seat0 is pyromancy
+    expect(duelPower(s, 0)).toBe(2);
+    expect(resolveDuels(s, 1).duelTokens[0]).toEqual([1, 1]);
   });
 });

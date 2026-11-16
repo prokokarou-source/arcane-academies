@@ -1,5 +1,5 @@
 import type { Action, GameState } from '../types';
-import { legalActions } from '../actions';
+import { cardsInPlay, legalActions } from '../actions';
 import { cardDef } from '../data/cards';
 import { duelPower } from '../duels';
 import { leftOf, rightOf } from '../payment';
@@ -9,9 +9,7 @@ const costUnits = (defId: string) => {
   return Object.values(c.resources ?? {}).reduce((a, b) => a + (b ?? 0), 0) + (c.coins ?? 0);
 };
 const defOf = (s: GameState, seat: number, uid: string) => {
-  const p = s.players[seat];
-  const card = [...p.hand, ...(s.kept[seat] ? [s.kept[seat]!] : [])].find((c) => c.uid === uid)!;
-  return card.defId;
+  return cardsInPlay(s, seat).find((c) => c.uid === uid)!.defId;
 };
 
 /** Rival Archmage: duel card when behind a neighbor, else most expensive affordable card, else sell. */
@@ -31,5 +29,5 @@ export function archmagePick(s: GameState, seat: number): Action {
     for (const a of builds) if (costUnits(defOf(s, seat, a.cardUid)) > costUnits(defOf(s, seat, best.cardUid))) best = a;
     return best;
   }
-  return acts.find((a) => a.type === 'sell')!;
+  return acts.find((a) => a.type === 'sell') ?? acts[0];
 }

@@ -99,15 +99,9 @@ describe('academies', () => {
       pyromancy: 'ore', hydromancy: 'moonstone', verdant: 'herbs', shadow: 'ink',
       astral: 'starglass', chronomancy: 'essence', runeforge: 'dragonscale',
     });
-    const powers: Record<string, string> = {
-      pyromancy: 'pyroDuelBonus', hydromancy: 'hydroTradeBonus', verdant: 'verdantWhiteRenown',
-      shadow: 'shadowTax', astral: 'astralSetBonus', chronomancy: 'chronoKeep', runeforge: 'runeChainCoins',
-    };
     for (const a of ACADEMIES) {
       expect(a.sides.A).toHaveLength(3);
-      expect(a.sides.A[1].power).toBe(powers[a.id]);
       expect(a.sides.B.length).toBeGreaterThanOrEqual(2);
-      expect(a.sides.B.some((s) => s.power === powers[a.id])).toBe(true);
     }
   });
 

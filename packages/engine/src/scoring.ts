@@ -2,7 +2,6 @@ import type { Discipline, GameState, PowerId } from './types';
 import { DISCIPLINES } from './types';
 import { cardDef } from './data/cards';
 import { academyDef } from './data/academies';
-import { hasPower } from './powers';
 import { scopeCount } from './actions';
 
 export type ScoreCategory = 'duels' | 'coins' | 'tower' | 'lore' | 'trade' | 'research' | 'patrons';
@@ -31,13 +30,31 @@ export type ScoreBreakdown = {
   items: ScoreItem[];
 };
 
-/** 2 per symbol, +6 per full set (+3 more with the Astral power), +5 per discipline with 3+ symbols. */
-export function scoreResearch(counts: Record<Discipline, number>, astralBonus: boolean): number {
+/**
+ * 2 per symbol, +6 per full set, +5 per discipline with 3+ symbols.
+ * `wild` symbols of your choice are placed where they score the most.
+ */
+export function scoreResearch(counts: Record<Discipline, number>, wild = 0): number {
   const values = DISCIPLINES.map((d) => counts[d] ?? 0);
+  if (wild > 0) {
+    let best = 0;
+    for (const d of DISCIPLINES) best = Math.max(best, scoreResearch({ ...counts, [d]: (counts[d] ?? 0) + 1 }, wild - 1));
+    return best;
+  }
   const symbols = values.reduce((a, b) => a + b, 0);
   const sets = Math.min(...values);
   const deep = values.filter((v) => v >= 3).length;
-  return 2 * symbols + sets * (6 + (astralBonus ? 3 : 0)) + 5 * deep;
+  return 2 * symbols + sets * 6 + 5 * deep;
+}
+
+/** Research symbols of a seat: fixed ones from cards, plus wildcards from its tower. */
+export function researchOfSeat(s: GameState, seat: number): { counts: Record<Discipline, number>; wild: number } {
+  const p = s.players[seat];
+  const counts: Record<Discipline, number> = { alchemy: 0, astronomy: 0, runes: 0 };
+  for (const c of p.built) for (const e of cardDef(c.defId).effects) if (e.kind === 'research') counts[e.discipline]++;
+  let wild = 0;
+  for (const st of academyDef(p.academyId).sides[p.side].slice(0, p.towerStages)) for (const e of st.effects) if (e.kind === 'researchAny') wild++;
+  return { counts, wild };
 }
 
 export function finalScores(s: GameState): ScoreBreakdown[] {
@@ -58,9 +75,6 @@ export function finalScores(s: GameState): ScoreBreakdown[] {
         for (const e of st.effects) if (e.kind === 'renown') v += e.amount;
         add({ cat: 'tower', kind: 'stage', stage: i + 1, points: v });
       });
-    if (hasPower(s, seat, 'verdantWhiteRenown')) {
-      add({ cat: 'tower', kind: 'power', power: 'verdantWhiteRenown', points: scopeCount(s, seat, 'basic', 'self') });
-    }
     const counts: Record<Discipline, number> = { alchemy: 0, astronomy: 0, runes: 0 };
     for (const c of p.built) {
       const def = cardDef(c.defId);
@@ -73,7 +87,7 @@ export function finalScores(s: GameState): ScoreBreakdown[] {
       const cat = def.family === 'lore' ? 'lore' : def.family === 'trade' ? 'trade' : def.family === 'patron' ? 'patrons' : null;
       if (cat) add({ cat, kind: 'card', defId: def.id, points: v });
     }
-    add({ cat: 'research', kind: 'research', points: scoreResearch(counts, hasPower(s, seat, 'astralSetBonus')) });
+    add({ cat: 'research', kind: 'research', points: scoreResearch(counts, researchOfSeat(s, seat).wild) });
     b.total = b.duels + b.coins + b.tower + b.lore + b.trade + b.research + b.patrons;
     return b;
   });

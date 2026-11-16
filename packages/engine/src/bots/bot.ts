@@ -1,5 +1,5 @@
 import type { Action, BotLevel, Discipline, GameState } from '../types';
-import { legalActions, submitAction, actingSeats, scopeCount } from '../actions';
+import { legalActions, submitAction, actingSeats, scopeCount, cardsInPlay } from '../actions';
 import { cardDef } from '../data/cards';
 import { academyDef } from '../data/academies';
 import { nextRandom } from '../rng';
@@ -31,8 +31,24 @@ export function cardValue(s: GameState, seat: number, defId: string): number {
     if (e.kind === 'research') {
       const before = researchCounts(s, seat);
       const after = { ...before, [e.discipline]: before[e.discipline] + 1 };
-      v += scoreResearch(after, false) - scoreResearch(before, false);
+      v += scoreResearch(after) - scoreResearch(before);
     }
+  }
+  return v;
+}
+
+/** Rough value of the next tower level of a seat, in Renown-equivalents. */
+export function stageWorth(s: GameState, seat: number): number {
+  const p = s.players[seat];
+  const st = academyDef(p.academyId).sides[p.side][p.towerStages];
+  let v = st.power ? 4 : 0;
+  for (const e of st.effects) {
+    if (e.kind === 'renown') v += e.amount;
+    if (e.kind === 'coins') v += e.amount / 3;
+    if (e.kind === 'duel') v += 1.5 * e.amount;
+    if (e.kind === 'produce') v += s.term < 3 ? 2 : 0.5;
+    if (e.kind === 'researchAny') v += 4;
+    if (e.kind === 'buildDiscard') v += 3;
   }
   return v;
 }
@@ -40,15 +56,10 @@ export function cardValue(s: GameState, seat: number, defId: string): number {
 /** Normal bot: greedy immediate value, with a little denial and a nudge towards academy stages. */
 function actionValue(s: GameState, seat: number, a: Action): number {
   const p = s.players[seat];
-  const card = [...p.hand, ...(s.kept[seat] ? [s.kept[seat]!] : [])].find((c) => c.uid === a.cardUid)!;
+  const card = cardsInPlay(s, seat).find((c) => c.uid === a.cardUid)!;
   const cost = paid(a) / 3;
   if (a.type === 'sell') return 1;
-  if (a.type === 'chronoKeep') return 0.5 + 0.5 * cardValue(s, seat, card.defId);
-  if (a.type === 'tower') {
-    const st = academyDef(p.academyId).sides[p.side][p.towerStages];
-    const renown = st.effects.reduce((sum, e) => sum + (e.kind === 'renown' ? e.amount : 0), 0);
-    return renown + (st.power ? 4 : 0) - cost + 1;
-  }
+  if (a.type === 'tower') return stageWorth(s, seat) - cost + 1;
   let v = cardValue(s, seat, card.defId) - cost;
   v += 0.4 * cardValue(s, seat, card.defId); // denial: strong cards are worth taking away
   return v;

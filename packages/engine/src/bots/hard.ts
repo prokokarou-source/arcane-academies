@@ -1,12 +1,12 @@
 import type { Action, Card, Discipline, Effect, GameState, PaymentPlan, PowerId, Resource, Term } from '../types';
 import { RARE_RESOURCES } from '../types';
-import { legalActions, scopeCount } from '../actions';
+import { cardsInPlay, legalActions, scopeCount } from '../actions';
 import { cardDef, CARDS } from '../data/cards';
 import { academyDef } from '../data/academies';
 import { duelPower } from '../duels';
 import { hasPower } from '../powers';
 import { leftOf, planPayment, productionOf, rightOf, tradePrice, validatePayment } from '../payment';
-import { scoreResearch } from '../scoring';
+import { researchOfSeat, scoreResearch } from '../scoring';
 
 /*
  * Hard bot. Every action is scored in Renown-equivalents as
@@ -40,12 +40,6 @@ function researchCounts(s: GameState, seat: number): Record<Discipline, number> 
   return counts;
 }
 
-/** True when one of the seat's academy stages carries this power (built or not). */
-function willHave(s: GameState, seat: number, power: PowerId): boolean {
-  const p = s.players[seat];
-  return academyDef(p.academyId).sides[p.side].some((st) => st.power === power);
-}
-
 /**
  * Renown the seat would score from cards and stages if the game ended now
  * (lore, trade, patrons, research, tower) — duels and coins are valued separately.
@@ -56,15 +50,13 @@ function staticScore(s: GameState, seat: number): number {
   for (const st of academyDef(p.academyId).sides[p.side].slice(0, p.towerStages)) {
     for (const e of st.effects) if (e.kind === 'renown') v += e.amount;
   }
-  if (hasPower(s, seat, 'verdantWhiteRenown')) v += scopeCount(s, seat, 'basic', 'self');
   for (const c of p.built) {
     for (const e of cardDef(c.defId).effects) {
       if (e.kind === 'renown') v += e.amount;
       if (e.kind === 'renownPer') v += e.per * scopeCount(s, seat, e.what, e.scope);
     }
   }
-  const astral = hasPower(s, seat, 'astralSetBonus') || (willHave(s, seat, 'astralSetBonus') && s.term < 3);
-  return v + scoreResearch(researchCounts(s, seat), astral);
+  return v + scoreResearch(researchCounts(s, seat), researchOfSeat(s, seat).wild);
 }
 
 /** Value of a coin, a bit higher early on while coins still buy trades. */
@@ -105,8 +97,7 @@ function produceValue(s: GameState, seat: number, e: Extract<Effect, { kind: 'pr
 /** Change in duel tokens from adding duel power, over this term and (more loosely) the later ones. */
 function duelGain(s: GameState, seat: number, amount: number): number {
   const me = duelPower(s, seat);
-  const pyro = hasPower(s, seat, 'pyroDuelBonus') || willHave(s, seat, 'pyroDuelBonus');
-  const out = (a: number, b: number, t: Term) => (a > b ? WIN[t] + (pyro ? 1 : 0) : a < b ? -1 : 0);
+  const out = (a: number, b: number, t: Term) => (a > b ? WIN[t] : a < b ? -1 : 0);
   let v = 0;
   for (const n of neighbors(s, seat)) {
     const them = duelPower(s, n);
@@ -132,26 +123,29 @@ function chainValue(s: GameState, name: string): number {
 
 function powerValue(s: GameState, seat: number, power: PowerId | undefined): number {
   if (!power) return 0;
-  const later = turnsAfter(s);
   const termsLeft = 3 - s.term + 1;
   switch (power) {
-    case 'pyroDuelBonus':
-      return neighbors(s, seat).filter((n) => duelPower(s, seat) >= duelPower(s, n)).length * termsLeft * 0.8;
-    case 'hydroTradeBonus':
-      return later * 0.15;
-    case 'verdantWhiteRenown':
-      return scopeCount(s, seat, 'basic', 'self') + (s.term < 3 ? 1 : 0);
-    case 'shadowTax':
-      return neighbors(s, seat).reduce((sum, n) => sum + Math.min(2, s.players[n].coins), 0) * 0.5;
-    case 'astralSetBonus': {
-      const c = researchCounts(s, seat);
-      return 3 * Math.min(c.alchemy, c.astronomy, c.runes) + (s.term < 3 ? 2 : 0);
+    case 'playLastCard':
+      return 2.5 * termsLeft;
+    case 'freeNewFamily': {
+      const owned = new Set(s.players[seat].built.map((c) => cardDef(c.defId).family));
+      return 1.2 * (7 - owned.size);
     }
-    case 'chronoKeep':
-      return s.term < 3 ? 3 : 0;
-    case 'runeChainCoins':
-      return later * 0.1;
+    case 'freeFirstTurn':
+      return 3 * (termsLeft - 1);
+    case 'freeSixthTurn':
+      return 3 * (s.turn < 6 ? termsLeft : termsLeft - 1);
   }
+}
+
+/** Best value among the cards a seat could take from the discard pile now. */
+function bestDiscard(s: GameState, seat: number): number {
+  let best = 0;
+  for (const c of s.archive) {
+    if (s.players[seat].built.some((b) => cardDef(b.defId).name === cardDef(c.defId).name)) continue;
+    best = Math.max(best, buildValue(s, seat, c));
+  }
+  return best;
 }
 
 /** What building a card is worth to a seat, before paying for it. */
@@ -204,6 +198,12 @@ function stageValue(s: GameState, seat: number): number {
   const stages = academyDef(p.academyId).sides[p.side];
   const st = stages[p.towerStages];
   let v = staticScore(withStage(s, seat), seat) - staticScore(s, seat) + powerValue(s, seat, st.power);
+  for (const e of st.effects) {
+    if (e.kind === 'coins') v += e.amount * coinValue(s, seat);
+    if (e.kind === 'duel') v += duelGain(s, seat, e.amount);
+    if (e.kind === 'produce') v += produceValue(s, seat, e);
+    if (e.kind === 'buildDiscard') v += Math.max(1.5, bestDiscard(s, seat));
+  }
   // Unbuilt stages are wasted at the end: hurry when the turns run out.
   const left = stages.length - p.towerStages;
   if (s.term === 3 && left >= 6 - s.turn + 1) v += 2;
@@ -212,7 +212,7 @@ function stageValue(s: GameState, seat: number): number {
 
 /** Hand the seat chooses from this turn. */
 function handOf(s: GameState, seat: number): Card[] {
-  return s.phase === 'bonus' ? (s.kept[seat] ? [s.kept[seat]!] : []) : s.players[seat].hand;
+  return cardsInPlay(s, seat);
 }
 
 function actionValue(s: GameState, seat: number, a: Action, recv: number | null, weights: number[]): number {
@@ -221,11 +221,9 @@ function actionValue(s: GameState, seat: number, a: Action, recv: number | null,
   const cv = coinValue(s, seat);
   let v: number;
   if (a.type === 'sell') v = 3 * cv;
-  else if (a.type === 'chronoKeep') v = 1 + 0.8 * buildValue(s, seat, card);
   else {
     const gift = a.payment.coinsToLeft + a.payment.coinsToRight;
     v = (a.type === 'tower' ? stageValue(s, seat) : buildValue(s, seat, card)) - paid(a.payment) * cv - gift * 0.12;
-    if (a.payment.free && hasPower(s, seat, 'runeChainCoins')) v += 2 * cv;
   }
   if (recv !== null) v += weights[recv] * denial(s, recv, hand, card);
   return v;

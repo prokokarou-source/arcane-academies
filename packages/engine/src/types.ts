@@ -24,7 +24,11 @@ export type Effect =
   | { kind: 'coins'; amount: number }
   | { kind: 'tradeDiscount'; group: 'basic' | 'rare'; sides: Side[] }
   | { kind: 'coinsPer'; what: CountTarget; per: number; scope: 'self' | 'selfAndNeighbors' }
-  | { kind: 'renownPer'; what: CountTarget; per: number; scope: 'self' | 'neighbors' | 'selfAndNeighbors' };
+  | { kind: 'renownPer'; what: CountTarget; per: number; scope: 'self' | 'neighbors' | 'selfAndNeighbors' }
+  /** One research symbol of your choice, picked at final scoring for the most points. */
+  | { kind: 'researchAny' }
+  /** When this tower level is built: build one card from the discard pile, free. */
+  | { kind: 'buildDiscard' };
 
 export interface CardDef {
   id: string;
@@ -44,14 +48,16 @@ export interface Card {
   defId: string;
 }
 
+/** Lasting academy abilities, active once the tower level that carries them is built. */
 export type PowerId =
-  | 'pyroDuelBonus'
-  | 'hydroTradeBonus'
-  | 'verdantWhiteRenown'
-  | 'shadowTax'
-  | 'astralSetBonus'
-  | 'chronoKeep'
-  | 'runeChainCoins';
+  /** Play the last card of each Term instead of discarding it. */
+  | 'playLastCard'
+  /** Build free the first card of each family you don't own yet. */
+  | 'freeNewFamily'
+  /** Build free the card you play on turn 1 of each Term. */
+  | 'freeFirstTurn'
+  /** Build free the card you play on turn 6 of each Term. */
+  | 'freeSixthTurn';
 
 export interface TowerStage {
   cost: Cost;
@@ -88,8 +94,7 @@ export interface PaymentPlan {
 export type Action =
   | { type: 'build'; cardUid: string; payment: PaymentPlan }
   | { type: 'tower'; cardUid: string; payment: PaymentPlan }
-  | { type: 'sell'; cardUid: string }
-  | { type: 'chronoKeep'; cardUid: string };
+  | { type: 'sell'; cardUid: string };
 
 export interface PlayerState {
   seat: number;
@@ -113,13 +118,20 @@ export interface GameState {
   rngState: number;
   term: Term;
   turn: number;
-  /** 'bonus' = Chronomancy kept-card extra turn at the start of a Term. */
-  phase: 'picking' | 'bonus' | 'ended';
+  /**
+   * 'bonus' = after turn 6, seats with playLastCard play their last card;
+   * 'discard' = seats with discardPicks build one card from the discard pile, free.
+   */
+  phase: 'picking' | 'bonus' | 'discard' | 'ended';
+  /** Free builds from the discard pile still owed per seat (discard phase). */
+  discardPicks?: number[];
+  /** Where play continues after the discard phase. */
+  resume?: 'advance' | 'endTerm';
   players: PlayerState[];
   archive: Card[];
   log: LogEntry[];
   /** duelTokens[seat] = list of Renown deltas from duels. */
   duelTokens: number[][];
-  /** Card kept aside by a Chronomancy power per seat, played as an extra turn next Term. */
+  /** Last card of the Term held by a seat with playLastCard, played in the bonus phase. */
   kept: (Card | null)[];
 }

@@ -39,8 +39,8 @@ describe('derive', () => {
     const stages = towerStagesOf({ ...view.players[0], towerStages: 1 });
     expect(stages).toHaveLength(3);
     expect(stages.map((x) => x.built)).toEqual([true, false, false]);
-    expect(stages[0].cost).toEqual({ resources: { moonstone: 2 } });
-    expect(stages[1].power).toBe('pyroDuelBonus');
+    expect(stages[0].cost).toEqual({ resources: { herbs: 2 } });
+    expect(stages[1].effects).toEqual([{ kind: 'duel', amount: 2 }]);
     expect(stages[2].effects).toEqual([{ kind: 'renown', amount: 7 }]);
   });
 

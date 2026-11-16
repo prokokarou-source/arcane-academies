@@ -19,7 +19,6 @@ const samples: ClientMessage[] = [
   { t: 'act', action: { type: 'build', cardUid: 'c1#0', payment: plan } },
   { t: 'act', action: { type: 'tower', cardUid: 'c1#0', payment: { ...plan, free: true } } },
   { t: 'act', action: { type: 'sell', cardUid: 'c1#0' } },
-  { t: 'act', action: { type: 'chronoKeep', cardUid: 'c1#0' } },
   { t: 'rematch' },
 ];
 

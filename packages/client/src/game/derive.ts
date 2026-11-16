@@ -12,20 +12,23 @@ export interface CardOptions {
   build?: Action;
   tower?: Action;
   sell?: Action;
-  keep?: Action;
 }
 
 const KEY: Record<Action['type'], keyof Omit<CardOptions, 'cardUid' | 'defId'>> = {
   build: 'build',
   tower: 'tower',
   sell: 'sell',
-  chronoKeep: 'keep',
 };
 
-/** One entry per card I can play now (my hand, or my kept card in the bonus phase), with the legal actions for it. */
+/**
+ * One entry per card I can play now, with the legal actions for it: my hand, my last card in the bonus phase,
+ * or the discarded cards I may build for free in the discard phase.
+ */
 export function handOptions(view: PlayerView, legal: Action[]): CardOptions[] {
   const me = view.players[view.me];
-  const cards = view.phase === 'bonus' ? (me.kept ? [me.kept] : []) : (me.hand ?? []);
+  const offered = new Set(legal.map((a) => a.cardUid));
+  const cards =
+    view.phase === 'bonus' ? (me.kept ? [me.kept] : []) : view.phase === 'discard' ? view.archive.filter((c) => offered.has(c.uid)) : (me.hand ?? []);
   return cards.map((c) => {
     const o: CardOptions = { cardUid: c.uid, defId: c.defId };
     for (const a of legal) if (a.cardUid === c.uid) o[KEY[a.type]] = a;
@@ -56,6 +59,11 @@ export function researchOf(p: PublicPlayer): Record<Discipline, number> {
   return out;
 }
 
+/** Research symbols of your choice from the tower (placed for the most points at the end). */
+export function researchWildOf(p: PublicPlayer): number {
+  return effectsOf(p).filter((e) => e.kind === 'researchAny').length;
+}
+
 export function productionOf(p: PublicPlayer): { options: Resource[]; amount: number }[] {
   const own = effectsOf(p).filter((e): e is Extract<Effect, { kind: 'produce' }> => e.kind === 'produce');
   return [{ options: [academyDef(p.academyId).home], amount: 1 }, ...own.map((e) => ({ options: e.options, amount: e.amount }))];
@@ -80,9 +88,9 @@ export function termDuels(prev: PlayerView | null, next: PlayerView): { seat: nu
   return termOver || out.some((x) => x.deltas.length > 0) ? out : null;
 }
 
-/** Names of seats still to pick this turn (Archmage excluded); null in the bonus phase, where the view can't tell who acts. */
+/** Names of seats still to pick this turn (Archmage excluded); null in the bonus and discard phases, where the view can't tell who acts. */
 export function waitingFor(view: PlayerView, seats: SeatStatus[]): string[] | null {
-  if (view.phase === 'bonus') return null;
+  if (view.phase === 'bonus' || view.phase === 'discard') return null;
   if (view.phase === 'ended') return [];
   return view.players
     .filter((p) => !p.hasSubmitted && seats[p.seat]?.kind !== 'archmage')

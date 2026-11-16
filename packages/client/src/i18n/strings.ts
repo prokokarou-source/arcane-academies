@@ -264,6 +264,17 @@ export const en = {
   sfx: 'Sound effects',
   haptics: 'Haptics',
   saved: 'Saved',
+  // quick reactions
+  react: 'React',
+  muteReactions: 'Mute reactions',
+  react_clap: 'Applause',
+  react_wow: 'Wow',
+  react_laugh: 'Ha ha',
+  react_fire: 'On fire',
+  react_think: 'Hmm',
+  react_goodMove: 'Good move!',
+  react_hurry: 'Hurry up!',
+  react_gg: 'Good game!',
 } as const;
 
 export type StringKey = keyof typeof en;

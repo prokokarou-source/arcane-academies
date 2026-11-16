@@ -6,6 +6,7 @@ import { useClient, useClientState, useT, type T } from './context';
 import { LEVELS } from './Home';
 import { Crest } from './Icon';
 import { inviteLink } from '../net/url';
+import { ReactionBubble, ReactionButton, useReactions } from './Reactions';
 
 const GRACE = [10_000, 30_000, 60_000, 120_000, 300_000, 600_000];
 const TIMERS = [30_000, 60_000, 90_000, 120_000, 300_000];
@@ -19,6 +20,7 @@ export function Lobby(props: { onFriends?: () => void } = {}) {
   const { lobby, seatId } = useClientState();
   const [botLevel, setBotLevel] = useState<BotLevel>('normal');
   const [copied, setCopied] = useState(false);
+  const reactions = useReactions();
   if (!lobby) return null;
   const isHost = lobby.hostId === seatId;
   const taken = (s: LobbySeat) => new Set(lobby.seats.filter((x) => x.id !== s.id && x.academyId).map((x) => x.academyId));
@@ -58,8 +60,12 @@ export function Lobby(props: { onFriends?: () => void } = {}) {
               <div className="seat-top">
                 <span className={`dot ${s.connected ? 'on' : 'off'}`} title={s.connected ? '' : t('offline')} />
                 {s.academyId && <Crest academyId={s.academyId} size={24} />}
-                <span className="name">{s.name}</span>
+                <span className="name">
+                  {s.name}
+                  <ReactionBubble reaction={reactions.get(s.id)} name={s.name} />
+                </span>
                 {mine && <span className="tag">{t('you')}</span>}
+                {mine && <ReactionButton />}
                 {s.id === lobby.hostId && <span className="tag">{t('host')}</span>}
                 {s.kind === 'bot' && !isHost && <span className="tag">{`${t('bot')} · ${t(`level_${s.botLevel ?? 'normal'}`)}`}</span>}
                 {isHost && s.kind === 'bot' && (

@@ -4,7 +4,7 @@
  */
 import type { Action, BotLevel, PlayerView } from '@arcane/engine';
 import { SOCIAL_ERRORS, isSocialMessage } from '@arcane/protocol';
-import type { ClientMessage, ErrorCode, FriendList, LobbyState, RoomSettings, SeatId, ServerMessage } from '@arcane/protocol';
+import type { ClientMessage, ErrorCode, FriendList, LobbyState, ReactionId, RoomSettings, SeatId, ServerMessage } from '@arcane/protocol';
 import { termDuels } from '../game/derive';
 import { clearAccountToken, clearSession, loadAccountToken, loadSession, saveAccountToken, saveSession, type Session } from './session';
 
@@ -38,6 +38,8 @@ export interface TermDuels {
   /** The tokens I gained: +n per win, -1 per loss; ties add none. */
   deltas: number[];
 }
+
+export type Reaction = Omit<Extract<ServerMessage, { t: 'reaction' }>, 't'>;
 
 export interface Invite {
   from: string;
@@ -100,6 +102,7 @@ const INITIAL: ClientState = {
 export class GameClient {
   private state: ClientState = INITIAL;
   private listeners = new Set<() => void>();
+  private reactionListeners = new Set<(r: Reaction) => void>();
   private ws: SocketLike | null = null;
   private queue: ClientMessage[] = [];
   private backoff = MIN_BACKOFF;
@@ -121,6 +124,12 @@ export class GameClient {
   subscribe = (fn: () => void): (() => void) => {
     this.listeners.add(fn);
     return () => this.listeners.delete(fn);
+  };
+
+  /** Reactions are events, not state: a late screen should not replay old ones. */
+  onReaction = (fn: (r: Reaction) => void): (() => void) => {
+    this.reactionListeners.add(fn);
+    return () => this.reactionListeners.delete(fn);
   };
 
   private set(patch: Partial<ClientState>): void {
@@ -292,6 +301,9 @@ export class GameClient {
       case 'closed':
         this.dropSession(msg.reason);
         return;
+      case 'reaction':
+        if (this.state.code) this.reactionListeners.forEach((f) => f({ seatId: msg.seatId, seat: msg.seat, reaction: msg.reaction }));
+        return;
     }
   }
 
@@ -400,6 +412,11 @@ export class GameClient {
 
   rematch(): void {
     this.send({ t: 'rematch' });
+  }
+
+  /** Send a quick reaction now, or not at all: a stale cheer after a reconnect would be odd. */
+  react(reaction: ReactionId): void {
+    if (this.state.seatId && this.ws?.readyState === OPEN && !this.rejoinPending) this.raw({ t: 'react', reaction });
   }
 
   // ---------- accounts and friends ----------

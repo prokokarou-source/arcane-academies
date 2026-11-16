@@ -16,11 +16,14 @@ import {
 import type { Action, BotLevel, GameState, SeatConfig } from '@arcane/engine';
 import {
   DEFAULT_SETTINGS,
+  REACTION_BURST,
+  REACTION_REFILL_MS,
   SETTINGS_LIMITS,
   type ClientMessage,
   type CloseReason,
   type ErrorCode,
   type LobbyState,
+  type ReactionId,
   type RoomSettings,
   type SeatId,
   type SeatStatus,
@@ -61,6 +64,9 @@ interface Member {
   /** Left the game on purpose (not just disconnected); a bot keeps playing the seat. */
   left?: boolean;
   engineSeat: number;
+  /** Reaction rate limit: tokens left and when they were last counted. */
+  reactTokens?: number;
+  reactAt?: number;
 }
 
 /**
@@ -178,6 +184,8 @@ export class Room {
         return this.act(m, msg.action);
       case 'rematch':
         return this.rematch(m);
+      case 'react':
+        return this.react(m, msg.reaction);
       default:
         return this.fail(conn, 'bad_message', `Unexpected message ${msg.t}`);
     }
@@ -338,6 +346,22 @@ export class Room {
       if (x.kind === 'human' && !x.conn) this.removeMember(x, 'removed');
     }
     if (!this.closed) this.broadcast();
+  }
+
+  // ---------- reactions ----------
+
+  /** Broadcast a quick reaction; over the per-seat limit it is dropped silently. Only connected players reach here, never bots. */
+  private react(m: Member, reaction: ReactionId): void {
+    const now = this.clock.now();
+    const tokens = Math.min(REACTION_BURST, (m.reactTokens ?? REACTION_BURST) + (now - (m.reactAt ?? now)) / REACTION_REFILL_MS);
+    m.reactAt = now;
+    if (tokens < 1) {
+      m.reactTokens = tokens;
+      return;
+    }
+    m.reactTokens = tokens - 1;
+    const seat = this.phase === 'game' ? m.engineSeat : null;
+    for (const x of this.members) x.conn?.send({ t: 'reaction', seatId: m.id, seat, reaction });
   }
 
   // ---------- game ----------

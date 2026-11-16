@@ -106,4 +106,17 @@ describe('SoundBoard', () => {
     h.board.setPrefs({ music: false, sfx: true, haptics: true });
     expect(h.made.find((x) => x.src === '/sounds/music.mp3')!.pauses).toBe(1);
   });
+
+  it('plays reactions softly with the tap sound and a light buzz', () => {
+    const h = setup();
+    h.board.unlock();
+    h.board.play('reaction');
+    expect(h.plays('/sounds/tap.mp3')).toBe(1);
+    expect(h.made.find((m) => m.src === '/sounds/tap.mp3')!.volume).toBeLessThan(0.8);
+    expect(h.vibrate).toHaveBeenCalledWith(8);
+    h.board.setPrefs({ music: true, sfx: false, haptics: false });
+    h.board.play('reaction');
+    expect(h.plays('/sounds/tap.mp3')).toBe(1);
+    expect(h.vibrate).toHaveBeenCalledTimes(1);
+  });
 });

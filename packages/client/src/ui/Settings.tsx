@@ -11,7 +11,7 @@ const LANGS: { id: Lang; label: string }[] = [
 export function Settings({ onBack }: { onBack(): void }) {
   const t = useT();
   const [prefs, setPrefs] = usePrefs();
-  const toggle = (k: 'animations' | 'music' | 'sfx' | 'haptics') => (
+  const toggle = (k: 'animations' | 'music' | 'sfx' | 'haptics' | 'muteReactions') => (
     <label className="field check">
       <input type="checkbox" aria-label={t(k)} checked={prefs[k]} onChange={(e) => setPrefs({ ...prefs, [k]: e.target.checked } as Prefs)} />
       <span>{t(k)}</span>
@@ -38,6 +38,7 @@ export function Settings({ onBack }: { onBack(): void }) {
       {toggle('music')}
       {toggle('sfx')}
       {toggle('haptics')}
+      {toggle('muteReactions')}
       <button onClick={onBack}>{t('back')}</button>
     </main>
   );

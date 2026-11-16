@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { encode, parseClientMessage, MAX_MESSAGE_BYTES } from '../src/index';
+import { encode, isSocialMessage, parseClientMessage, MAX_MESSAGE_BYTES, REACTIONS } from '../src/index';
 import type { ClientMessage, ServerMessage } from '../src/index';
 
 const plan = { buyLeft: { ink: 1 }, buyRight: {}, coinsToLeft: 2, coinsToRight: 0, coinsToBank: 0, free: false };
@@ -100,5 +100,16 @@ describe('account messages', () => {
     expect(parseClientMessage(JSON.stringify({ t: 'login', username: 'Ana', password: 'x'.repeat(129) }))).toBeNull();
     expect(parseClientMessage(JSON.stringify({ t: 'invite', username: 7 }))).toBeNull();
     expect(parseClientMessage(JSON.stringify({ t: 'auth' }))).toBeNull();
+  });
+});
+
+describe('reactions', () => {
+  it('accepts every reaction id and nothing else', () => {
+    for (const reaction of REACTIONS) expect(parseClientMessage(encode({ t: 'react', reaction }))).toEqual({ t: 'react', reaction });
+    for (const bad of ['hello', '', 7, null, undefined, 'CLAP', { id: 'clap' }]) {
+      expect(parseClientMessage(JSON.stringify({ t: 'react', reaction: bad }))).toBeNull();
+    }
+    expect(parseClientMessage(JSON.stringify({ t: 'react', reaction: 'gg', text: 'free text' }))).toEqual({ t: 'react', reaction: 'gg' });
+    expect(isSocialMessage({ t: 'react', reaction: 'gg' })).toBe(false);
   });
 });

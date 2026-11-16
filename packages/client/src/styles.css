@@ -303,3 +303,22 @@ select option { background: var(--night-2); color: var(--text); }
 }
 .panel.row { flex-direction: row; }
 .invite { color: var(--text); word-break: break-all; }
+
+/* quick reactions */
+.react-btn { font-size: 1.15rem; min-width: 40px; text-decoration: none; }
+.react-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+.react-grid button { min-height: 48px; padding: 6px; border-radius: 14px; }
+.react-grid .emoji { font-size: 1.6rem; line-height: 1; }
+.react-grid .phrase { grid-column: span 5; font-size: 0.95rem; }
+@media (min-width: 420px) { .react-grid .phrase { grid-column: span 2; } .react-grid .phrase:last-child { grid-column: span 1; } }
+.neighbor, .me { position: relative; }
+.react-bubble {
+  display: inline-block; margin-left: 6px; padding: 2px 9px; border-radius: 999px; white-space: nowrap;
+  background: var(--gold); color: #1d1436; font-size: 0.8rem; font-weight: 700; line-height: 1.4;
+  box-shadow: 0 4px 14px rgba(8, 5, 20, 0.45); pointer-events: none;
+  animation: react-fade 3s ease-out both;
+}
+.react-bubble.emoji { font-size: 1.15rem; padding: 0 6px; background: rgba(255, 246, 220, 0.95); }
+.neighbor .react-bubble, .me > .react-bubble { position: absolute; top: -10px; right: 6px; margin: 0; z-index: 2; }
+.react-strip { display: flex; flex-wrap: wrap; gap: 6px 12px; justify-content: center; margin: 0; font-size: 0.85rem; color: var(--muted); }
+@keyframes react-fade { 0% { opacity: 0; transform: translateY(4px) scale(0.85); } 10% { opacity: 1; transform: none; } 80% { opacity: 1; } 100% { opacity: 0; } }

@@ -12,6 +12,7 @@ import { academyArt, Crest, Icon } from './Icon';
 import { useSound } from '../audio/context';
 import { GameEnd } from './GameEnd';
 import { PlayerPanel } from './PlayerPanel';
+import { ReactionBubble, ReactionButton, useReactions, type ShownReaction } from './Reactions';
 import { ROMAN, TermEnd } from './TermEnd';
 
 export function Game({ onSettings, onRules }: { onSettings(): void; onRules(): void }) {
@@ -24,6 +25,7 @@ export function Game({ onSettings, onRules }: { onSettings(): void; onRules(): v
   const [table, setTable] = useState(false);
   const [info, setInfo] = useState<string | null>(null);
   const [menu, setMenu] = useState<'closed' | 'open' | 'leave'>('closed');
+  const reactions = useReactions();
   const turnKey = game ? `${game.view.term}/${game.view.turn}/${game.view.phase}` : '';
   useEffect(() => setSelected(null), [turnKey]);
   if (!game) return null;
@@ -35,6 +37,9 @@ export function Game({ onSettings, onRules }: { onSettings(): void; onRules(): v
   const current = options.find((o) => o.cardUid === selected) ?? null;
   const canAct = legal.length > 0 && view.phase !== 'ended';
   const nameOf = (seat: number) => seats[seat]?.name ?? view.players[seat].config.name;
+  const bySeat = new Map<number, ShownReaction>();
+  for (const r of reactions.values()) if (r.seat !== null) bySeat.set(r.seat, r);
+  const elsewhere = [...bySeat.values()].filter((r) => r.seat !== left && r.seat !== right && r.seat !== view.me);
 
   let status: string;
   if (view.phase === 'ended') status = '';
@@ -59,20 +64,32 @@ export function Game({ onSettings, onRules }: { onSettings(): void; onRules(): v
           {me.coins}
           <Icon name="coin" />
         </span>
+        <ReactionButton />
         <button className="link small" aria-label={t('menu')} onClick={() => setMenu('open')}>
           ☰
         </button>
       </header>
 
       <section className="neighbors">
-        <Neighbor side={t('left')} player={view.players[left]} status={seats[left]} onClick={() => setInspect(left)} />
+        <Neighbor side={t('left')} player={view.players[left]} status={seats[left]} reaction={bySeat.get(left)} onClick={() => setInspect(left)} />
         <button className="link small" onClick={() => setTable(true)}>
           {t('table')}
         </button>
-        <Neighbor side={t('right')} player={view.players[right]} status={seats[right]} onClick={() => setInspect(right)} />
+        <Neighbor side={t('right')} player={view.players[right]} status={seats[right]} reaction={bySeat.get(right)} onClick={() => setInspect(right)} />
       </section>
+      {elsewhere.length > 0 && (
+        <p className="react-strip">
+          {elsewhere.map((r) => (
+            <span key={r.seatId}>
+              {nameOf(r.seat!)}
+              <ReactionBubble reaction={r} name={nameOf(r.seat!)} />
+            </span>
+          ))}
+        </p>
+      )}
 
       <button className="me has-art" style={{ ['--art' as string]: `url(${academyArt(me.academyId)})` }} onClick={() => setInspect(view.me)}>
+        <ReactionBubble reaction={bySeat.get(view.me)} name={nameOf(view.me)} />
         <span className="me-row">
           <Crest academyId={me.academyId} size={30} />
           {productionOf(me).map((x, i) => (
@@ -146,7 +163,7 @@ export function Game({ onSettings, onRules }: { onSettings(): void; onRules(): v
           <section className="sheet" role="dialog" aria-label={t('table')} onClick={(e) => e.stopPropagation()}>
             <h3>{t('table')}</h3>
             {view.players.map((p) => (
-              <Neighbor key={p.seat} side={p.seat === view.me ? t('you') : ''} player={p} status={seats[p.seat]} onClick={() => (setTable(false), setInspect(p.seat))} />
+              <Neighbor key={p.seat} side={p.seat === view.me ? t('you') : ''} player={p} status={seats[p.seat]} reaction={bySeat.get(p.seat)} onClick={() => (setTable(false), setInspect(p.seat))} />
             ))}
             <button onClick={() => setTable(false)}>{t('close')}</button>
           </section>
@@ -183,7 +200,7 @@ export function Game({ onSettings, onRules }: { onSettings(): void; onRules(): v
   );
 }
 
-function Neighbor(props: { side: string; player: PublicPlayer; status?: SeatStatus; onClick(): void }) {
+function Neighbor(props: { side: string; player: PublicPlayer; status?: SeatStatus; reaction?: ShownReaction; onClick(): void }) {
   const t = useT();
   const { player: p, status: s } = props;
   const name = s?.name ?? p.config.name;
@@ -197,6 +214,7 @@ function Neighbor(props: { side: string; player: PublicPlayer; status?: SeatStat
         <span className="muted small">{props.side}</span>
         {p.hasSubmitted && <span className="ready">✓</span>}
       </span>
+      <ReactionBubble reaction={props.reaction} name={name} />
       <span className="name">{name}</span>
       <span className="small glyphs">
         <span className="num">

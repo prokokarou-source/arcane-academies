@@ -305,7 +305,7 @@ select option { background: var(--night-2); color: var(--text); }
 .invite { color: var(--text); word-break: break-all; }
 
 /* quick reactions */
-.react-btn { font-size: 1.15rem; min-width: 40px; text-decoration: none; }
+button.link.react-btn { font-size: 1.15rem; min-width: 40px; text-decoration: none; }
 .react-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
 .react-grid button { min-height: 48px; padding: 6px; border-radius: 14px; }
 .react-grid .emoji { font-size: 1.6rem; line-height: 1; }

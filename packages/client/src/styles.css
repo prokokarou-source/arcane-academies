@@ -539,8 +539,8 @@ button.link.react-btn { font-size: 1.15rem; min-width: 40px; text-decoration: no
 .avatar-grid { display: grid; grid-template-columns: repeat(4, 48px); gap: var(--s2); justify-content: center; }
 .avatar-opt { display: grid; place-items: center; width: 48px; height: 48px; padding: 0; border-radius: 50%; background: transparent; border: 2px solid transparent; }
 .avatar-opt.on { border-color: var(--gold); box-shadow: 0 0 10px rgba(232, 181, 74, 0.35); }
-.avatar-colors { display: flex; flex-wrap: wrap; gap: var(--s2); justify-content: center; }
-.avatar-swatch { width: 32px; height: 32px; min-height: 0; padding: 0; border-radius: 50%; border: 2px solid rgba(0, 0, 0, 0.35); }
+.avatar-colors { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.avatar-swatch { width: 28px; height: 28px; min-height: 0; padding: 0; border-radius: 50%; border: 2px solid rgba(0, 0, 0, 0.35); }
 .avatar-swatch.on { outline: 2px solid var(--gold); outline-offset: 2px; }
 .avatar-swatch:disabled { opacity: 0.35; }
 .play-again { display: flex; flex-direction: column; gap: var(--s2); }

@@ -1,19 +1,25 @@
 import { useEffect, useState } from 'react';
 import { useOnline, useUpdate } from '../pwa/context';
+import type { Queue } from '../net/menuTypes';
 import { Account } from './Account';
 import { useClient, useClientState, usePrefs, useT } from './context';
 import { Friends } from './Friends';
 import { Game } from './Game';
-import { Home } from './Home';
+import { Leaderboards } from './Leaderboards';
 import { Lobby } from './Lobby';
+import { BottomBar, MenuHeader, type Tab } from './Menu';
+import { About, Faq, LanguagePage, More, WhatsNew, type MorePage } from './More';
+import { DEFAULT_PLAY, Play, QueueWait, type PlaySel } from './Play';
 import { Privacy } from './Privacy';
 import { Profile } from './Profile';
-import { QuickMatch } from './QuickMatch';
+import { Reveal } from './Reveal';
+import { CreateRoom, Rooms } from './Rooms';
 import { Rules } from './Rules';
 import { Settings } from './Settings';
 import { RecoveryCodeDialog } from './Safety';
 
-type Page = 'home' | 'rules' | 'settings' | 'account' | 'friends' | 'privacy' | 'profile';
+/** A screen opened on top of the menu tabs; Back returns to the one below. */
+type Page = { id: MorePage | 'createRoom'; user?: string };
 
 /** The privacy notice has its own address (/privacy) so it can be linked from outside the app. */
 export const PRIVACY_PATH = '/privacy';
@@ -22,10 +28,14 @@ export function App({ initialRoom, initialPage }: { initialRoom?: string; initia
   const state = useClientState();
   const client = useClient();
   const t = useT();
-  const [page, setPage] = useState<Page>(initialPage ?? 'home');
+  const [tab, setTab] = useState<Tab>(initialRoom ? 'rooms' : 'play');
+  const [stack, setStack] = useState<Page[]>(initialPage ? [{ id: initialPage }] : []);
+  const [playSel, setPlaySel] = useState<PlaySel>(DEFAULT_PLAY);
+  const [boardQueue, setBoardQueue] = useState<Queue>('3-5');
+  const [roomCode, setRoomCode] = useState(initialRoom);
   const online = useOnline();
   const update = useUpdate();
-  const [prefs] = usePrefs();
+  const [prefs, setPrefs] = usePrefs();
   // The Animations setting turns off every transition and animation, like the system's reduced motion.
   useEffect(() => {
     document.documentElement.classList.toggle('no-anim', !prefs.animations);
@@ -38,45 +48,84 @@ export function App({ initialRoom, initialPage }: { initialRoom?: string; initia
     const id = setTimeout(() => setSlow(true), 1500);
     return () => clearTimeout(id);
   }, [open]);
+  // Entering a lobby or game closes whatever menu page led there.
+  const inRoom = !!(state.lobby || state.game);
+  useEffect(() => {
+    if (inRoom) setStack([]);
+  }, [inRoom]);
+
+  const push = (p: Page) => setStack((s) => [...s, p]);
+  const back = () => setStack((s) => s.slice(0, -1));
+  const top = stack.at(-1);
+  const goTab = (x: Tab) => {
+    setRoomCode(undefined);
+    setTab(x);
+  };
+
+  /** Logged-in players play under their username; guests under their saved name, made up once if empty. */
+  const playName = () => {
+    if (state.account) return state.account;
+    let name = prefs.name.trim();
+    if (!name) {
+      name = `Guest${1000 + Math.floor(Math.random() * 9000)}`;
+      setPrefs({ ...prefs, name });
+    }
+    return name;
+  };
 
   const leavePrivacy = () => {
     if (location.pathname === PRIVACY_PATH) history.replaceState(null, '', '/');
-    setPage('home');
+    back();
   };
 
+  const playRanked = (q: Queue) => {
+    if (!state.account) return push({ id: 'account' });
+    setPlaySel({ ...playSel, mode: 'ranked', queue: q });
+    goTab('play');
+    client.queueJoin('ranked', q, state.account);
+  };
+
+  const id = top?.id;
   let screen;
-  if (page === 'privacy' && !state.game && !state.lobby) screen = <Privacy onBack={leavePrivacy} />;
-  else if (page === 'settings') screen = <Settings onBack={() => setPage('home')} />;
-  else if (page === 'rules' && (state.game || (!state.lobby && !state.restoring))) screen = <Rules onBack={() => setPage('home')} />;
-  else if (page === 'account' && !state.game && !state.lobby)
-    screen = (
-      <Account onBack={() => setPage('home')} onFriends={() => setPage('friends')} onProfile={() => setPage('profile')} onPrivacy={() => setPage('privacy')} />
-    );
-  else if (page === 'profile' && !state.game && !state.lobby && state.account) screen = <Profile onBack={() => setPage('account')} />;
-  else if (page === 'friends' && !state.game) screen = <Friends onBack={() => setPage('home')} onAccount={() => setPage('account')} />;
-  else if (state.game) screen = <Game onSettings={() => setPage('settings')} onRules={() => setPage('rules')} />;
-  else if (state.lobby) screen = <Lobby onFriends={state.account ? () => setPage('friends') : undefined} />;
-  else if (state.quick) screen = <QuickMatch />;
+  let menu = false;
+  if (id === 'privacy' && !inRoom) screen = <Privacy onBack={leavePrivacy} />;
+  else if (id === 'settings') screen = <Settings onBack={back} />;
+  else if (id === 'rules' && (state.game || (!state.lobby && !state.restoring))) screen = <Rules onBack={back} />;
+  else if (id === 'friends' && !state.game)
+    screen = <Friends onBack={back} onAccount={() => push({ id: 'account' })} onProfile={(user) => push({ id: 'profile', user })} />;
+  else if (state.game) screen = <Game onSettings={() => push({ id: 'settings' })} onRules={() => push({ id: 'rules' })} />;
+  else if (state.lobby) screen = <Lobby onFriends={state.account ? () => push({ id: 'friends' }) : undefined} />;
+  else if (state.queue) screen = <QueueWait playName={playName} />;
   else if (state.restoring)
     screen = (
       <main className="screen center">
         <p className="status loading">{t('connecting')}</p>
       </main>
     );
-  else
-    screen = (
-      <Home
-        initialRoom={initialRoom}
-        onRules={() => setPage('rules')}
-        onSettings={() => setPage('settings')}
-        onAccount={() => setPage('account')}
-        onFriends={() => setPage('friends')}
-        onPrivacy={() => setPage('privacy')}
-      />
-    );
+  else if (id === 'account' || (id === 'profile' && !top?.user && !state.account))
+    screen = <Account onBack={back} onPrivacy={() => push({ id: 'privacy' })} />;
+  else if (id === 'profile') screen = <Profile key={top?.user ?? ''} username={top?.user} onBack={back} />;
+  else if (id === 'news') screen = <WhatsNew onBack={back} />;
+  else if (id === 'language') screen = <LanguagePage onBack={back} />;
+  else if (id === 'faq') screen = <Faq onBack={back} />;
+  else if (id === 'about') screen = <About onBack={back} />;
+  else if (id === 'createRoom') screen = <CreateRoom onBack={back} playName={playName} />;
+  else {
+    menu = true;
+    screen =
+      tab === 'play' ? (
+        <Play sel={playSel} onSel={setPlaySel} playName={playName} onLogin={() => push({ id: 'account' })} />
+      ) : tab === 'rooms' ? (
+        <Rooms playName={playName} initialCode={roomCode} onCreate={() => push({ id: 'createRoom' })} />
+      ) : tab === 'boards' ? (
+        <Leaderboards queue={boardQueue} onQueue={setBoardQueue} onOpen={(user) => push({ id: 'profile', user })} onPlay={playRanked} />
+      ) : (
+        <More onOpen={(p) => push({ id: p })} />
+      );
+  }
 
   return (
-    <div className="app">
+    <div className={`app${menu ? ' with-menu' : ''}`}>
       {!online ? (
         <div className="bar bar-warn" role="status">
           {t('offlineBar')}
@@ -95,6 +144,7 @@ export function App({ initialRoom, initialPage }: { initialRoom?: string; initia
           </div>
         )
       )}
+      {menu && <MenuHeader onLogin={() => push({ id: 'account' })} onProfile={() => push({ id: 'profile' })} onFriends={() => push({ id: 'friends' })} />}
       {update.ready && (
         <div className="banner" role="status">
           <span>{t('updateReady')}</span>
@@ -116,13 +166,7 @@ export function App({ initialRoom, initialPage }: { initialRoom?: string; initia
           <div key={`${inv.from}/${inv.code}`} className="banner" role="alert">
             <span>{t('inviteFrom', { name: inv.from, code: inv.code })}</span>
             <span className="row">
-              <button
-                className="primary"
-                onClick={() => {
-                  setPage('home');
-                  client.acceptInvite(inv, state.account ?? (prefs.name.trim() || inv.code));
-                }}
-              >
+              <button className="primary" onClick={() => client.acceptInvite(inv, playName())}>
                 {t('join')}
               </button>
               <button className="link" onClick={() => client.dismissInvite(inv)}>
@@ -140,6 +184,8 @@ export function App({ initialRoom, initialPage }: { initialRoom?: string; initia
         </div>
       )}
       {screen}
+      {menu && <BottomBar tab={tab} onTab={goTab} />}
+      {state.game && <Reveal />}
       <RecoveryCodeDialog />
     </div>
   );

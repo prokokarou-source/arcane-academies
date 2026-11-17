@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { LobbyState } from '@arcane/protocol';
-import { renderApp } from './render';
+import { openMore, renderApp } from './render';
 import { gameMsg, makeGame } from './views';
 
 afterEach(cleanup);
@@ -14,7 +14,7 @@ describe('avatar picker', () => {
     const h = renderApp();
     act(() => h.sock().receive({ t: 'account', username: 'Ana', avatar: { icon: 'owl', color: 'teal' } }));
     expect(h.client.getState().avatar).toEqual({ icon: 'owl', color: 'teal' });
-    fireEvent.click(screen.getByRole('button', { name: 'Logged in as Ana' }));
+    openMore('Account settings');
     expect(screen.getByRole('img', { name: 'Avatar of Ana' })).toBeTruthy();
     fireEvent.click(screen.getByText('Avatar'));
     expect(screen.getByRole('radio', { name: 'Owl' }).getAttribute('aria-checked')).toBe('true');
@@ -72,24 +72,8 @@ describe('avatars next to names', () => {
       h.sock().receive({ t: 'account', username: 'Ana' });
       h.sock().receive({ t: 'friends', list: { friends: [{ username: 'Bob', online: true, avatar: { icon: 'wave', color: 'azure' } }], incoming: [], outgoing: [] } });
     });
-    fireEvent.click(screen.getByRole('button', { name: /Friends · 1 online/ }));
+    openMore('Friends');
     expect(stroke(badges(screen.getByText('Bob').closest('li'))[0])).toBe('#4b8fe0');
-    fireEvent.click(screen.getByRole('tab', { name: 'Leaderboard' }));
-    act(() =>
-      h.sock().receive({
-        t: 'leaderboard',
-        queue: '1v1',
-        scope: 'friends',
-        rows: [
-          { rank: 1, username: 'Bob', country: null, division: 'apprentice', rating: 1016, games: 1, avatar: { icon: 'wave', color: 'azure' } },
-          { rank: 2, username: 'Ana', country: null, division: 'apprentice', rating: 984, games: 1 },
-        ],
-        me: null,
-      }),
-    );
-    const rows = [...screen.getByRole('list', { name: 'Leaderboard' }).querySelectorAll('li')];
-    expect(stroke(badges(rows[0])[0])).toBe('#4b8fe0');
-    expect(badges(rows[1])[0].classList.contains('avatar-default')).toBe(true);
   });
 
   it('game player panels and the end screen', () => {

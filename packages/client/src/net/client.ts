@@ -4,22 +4,20 @@
  */
 import type { Action, BotLevel, PlayerView } from '@arcane/engine';
 import { SOCIAL_ERRORS, isSocialMessage } from '@arcane/protocol';
+import type { Avatar, ErrorCode, FriendList, PushSub, ReactionId, ReportReason, RoomSettings, SeatId } from '@arcane/protocol';
 import type {
-  Avatar,
-  ClientMessage,
-  ErrorCode,
-  FriendList,
+  AnyClientMessage as ClientMessage,
+  AnyServerMessage as ServerMessage,
+  GameMsg,
   LeaderRow,
   LobbyState,
+  OpenRoom,
   Profile,
-  PushSub,
   Queue,
-  ReactionId,
-  ReportReason,
-  RoomSettings,
-  SeatId,
-  ServerMessage,
-} from '@arcane/protocol';
+  Reveal,
+  RoomConfig,
+  Scope,
+} from './menuTypes';
 import { termDuels } from '../game/derive';
 import { LocalGame, loadLocal, type LocalDeps } from './local';
 import { clearAccountToken, clearSession, loadAccountToken, loadSession, saveAccountToken, saveSession, type Session } from './session';
@@ -44,9 +42,10 @@ export interface ClientDeps {
   now?(): number;
 }
 
-/** A quick-match search in progress. */
-export interface QuickSearch {
-  size: Queue;
+/** A Casual or Ranked queue search in progress. */
+export interface QueueSearch {
+  kind: 'casual' | 'ranked';
+  queue: Queue;
   /** Players searching right now, me included (0 until the server answers). */
   searching: number;
   /** Local time (ms) the search began. */
@@ -54,7 +53,15 @@ export interface QuickSearch {
 }
 
 export type Notice = 'replaced' | 'expired' | 'left' | 'removed' | 'rejoinFailed';
-export type GameMsg = Extract<ServerMessage, { t: 'game' }>;
+export type { GameMsg };
+
+/** The last leaderboard fetched (one queue and scope). */
+export interface Board {
+  queue: Queue;
+  scope: Scope;
+  rows: LeaderRow[];
+  me: LeaderRow | null;
+}
 export type SeatPatch = Omit<Extract<ClientMessage, { t: 'setSeat' }>, 't'>;
 
 /** My duels of the Term that just ended, kept until the player dismisses them. */
@@ -102,12 +109,16 @@ export interface ClientState {
   invites: Invite[];
   /** The last account or friend error, shown on those screens instead of the room banner. */
   socialError: { code: ErrorCode; message: string } | null;
-  /** Searching for a quick match. */
-  quick: QuickSearch | null;
-  /** My stats and last games, as last fetched. */
+  /** Searching in a Casual or Ranked queue. */
+  queue: QueueSearch | null;
+  /** The last profile fetched (mine or another player's). */
   profile: Profile | null;
-  /** Me and my friends ranked, as last fetched. */
-  leaderboard: LeaderRow[] | null;
+  /** The last leaderboard fetched. */
+  leaderboard: Board | null;
+  /** Public rooms waiting for players, while the Rooms tab watches them. */
+  rooms: OpenRoom[] | null;
+  /** The side and academy draw of the game that just started, until its animation is done. */
+  reveal: Reveal | null;
   /** Set when the server confirmed a password change. */
   passwordChanged: boolean;
   /** The server's push (VAPID) public key once logged in; null when the server has push off. */
@@ -126,6 +137,8 @@ const MAX_BACKOFF = 8000;
 const CLOSE_NOTICE: Record<number, Notice> = { 4001: 'replaced', 4002: 'expired' };
 const DEAD_SESSION: ErrorCode[] = ['no_room', 'bad_token', 'not_in_room'];
 const NO_STATS = { profile: null, leaderboard: null, passwordChanged: false } as const;
+/** Messages still worth sending after the seat is lost. */
+const KEEP_ON_DROP = new Set<string>(['create', 'join', 'createRoom', 'joinRoom', 'profile', 'leaderboard', 'setCountry', 'roomsWatch', 'roomsUnwatch']);
 /** Seat id and room code of a game played in this browser (no server room exists). */
 const LOCAL_SEAT: SeatId = 's1';
 const LOCAL_CODE = 'SOLO';
@@ -150,9 +163,11 @@ const INITIAL: ClientState = {
   friends: null,
   invites: [],
   socialError: null,
-  quick: null,
+  queue: null,
   profile: null,
   leaderboard: null,
+  rooms: null,
+  reveal: null,
   passwordChanged: false,
   pushKey: null,
   blocked: null,
@@ -176,8 +191,10 @@ export class GameClient {
   private localGame: LocalGame | null = null;
   /** Saved login, resent on every (re)connect so presence follows the socket. */
   private accountToken: string | null = null;
-  /** The quick-match request, resent after a reconnect (the server drops the queue entry with the socket). */
-  private quickReq: Extract<ClientMessage, { t: 'queueJoin' }> | null = null;
+  /** The queue request, resent after a reconnect (the server drops the queue entry with the socket). */
+  private queueReq: Extract<ClientMessage, { t: 'queueJoin' }> | null = null;
+  /** The Rooms tab is open: watch the public list again after a reconnect. */
+  private watchingRooms = false;
 
   constructor(private readonly deps: ClientDeps) {}
 
@@ -268,8 +285,9 @@ export class GameClient {
       this.raw({ t: 'rejoin', code: session.code, token: session.token });
     } else {
       this.flushQueue();
-      if (this.quickReq) this.raw(this.quickReq);
+      if (this.queueReq) this.raw(this.queueReq);
     }
+    if (this.watchingRooms) this.raw({ t: 'roomsWatch' });
   }
 
   private onClose(code: number): void {
@@ -303,8 +321,8 @@ export class GameClient {
           const hostId = this.session?.code === msg.code ? this.session.hostId : undefined;
           this.session = { code: msg.code, token: msg.token, ...(hostId ? { hostId } : {}) };
           saveSession(this.deps.storage, this.session);
-          this.quickReq = null;
-          this.set({ seatId: msg.seatId, code: msg.code, hostId: hostId ?? null, notice: null, error: null, quick: null });
+          this.queueReq = null;
+          this.set({ seatId: msg.seatId, code: msg.code, hostId: hostId ?? null, notice: null, error: null, queue: null });
         }
         return;
       case 'lobby':
@@ -349,14 +367,17 @@ export class GameClient {
         this.set({ friends: msg.list });
         return;
       case 'queueState': {
-        if (!this.quickReq) return;
-        const since = this.state.quick?.since ?? this.now() - msg.waitedMs;
-        this.set({ quick: { size: msg.queue, searching: msg.searching, since } });
+        if (!this.queueReq) return;
+        const since = this.state.queue?.since ?? this.now() - msg.waitedMs;
+        this.set({ queue: { kind: msg.kind, queue: msg.queue, searching: msg.searching, since } });
         return;
       }
       case 'queueLeft':
-        this.quickReq = null;
-        this.set({ quick: null });
+        this.queueReq = null;
+        this.set({ queue: null });
+        return;
+      case 'rooms':
+        if (this.watchingRooms) this.set({ rooms: msg.rooms });
         return;
       case 'pushKey':
         this.set({ pushKey: msg.key });
@@ -386,7 +407,7 @@ export class GameClient {
         this.set({ profile: msg.profile });
         return;
       case 'leaderboard':
-        this.set({ leaderboard: msg.rows });
+        this.set({ leaderboard: { queue: msg.queue, scope: msg.scope, rows: msg.rows, me: msg.me } });
         return;
       case 'passwordChanged':
         this.set({ passwordChanged: true, accountPending: false, socialError: null });
@@ -395,6 +416,12 @@ export class GameClient {
         this.set({ invites: [...this.state.invites.filter((i) => i.from !== msg.from), { from: msg.from, code: msg.code }] });
         return;
       case 'error':
+        if (msg.code === 'not_logged_in' && this.queueReq) {
+          // Ranked needs an account: the search never started.
+          this.queueReq = null;
+          this.set({ queue: null, socialError: { code: msg.code, message: msg.message } });
+          return;
+        }
         if (SOCIAL_ERRORS.includes(msg.code)) {
           if (msg.code === 'bad_session') {
             // The saved login was ended elsewhere: carry on as a guest.
@@ -429,7 +456,9 @@ export class GameClient {
     const prev = restart ? null : (this.state.game?.view ?? null);
     const added = termDuels(prev, msg.view);
     const duels = added && prev ? { term: prev.term, view: msg.view, deltas: added[msg.view.me]?.deltas ?? [] } : restart ? null : this.state.duels;
-    this.set({ game: msg, prevView: prev, duels, lobby: null, acting: false });
+    // The first message of a game carries the side and academy draw, animated once.
+    const reveal = msg.reveal ?? (restart || !this.state.game ? null : this.state.reveal);
+    this.set({ game: msg, prevView: prev, duels, lobby: null, acting: false, reveal });
   }
 
   private rejoined(): void {
@@ -450,10 +479,10 @@ export class GameClient {
     this.session = null;
     this.rejoinPending = false;
     // Moves for the lost room are meaningless now; creating or joining a new room still makes sense.
-    this.queue = this.queue.filter((m) => m.t === 'create' || m.t === 'join' || isSocialMessage(m));
+    this.queue = this.queue.filter((m) => KEEP_ON_DROP.has(m.t) || isSocialMessage(m as Parameters<typeof isSocialMessage>[0]));
     // Replaced: another tab or device holds the seat now and may share this storage, so leave it alone.
     if (notice !== 'replaced') clearSession(this.deps.storage);
-    this.set({ seatId: null, code: null, hostId: null, lobby: null, game: null, prevView: null, duels: null, acting: false, restoring: false, notice });
+    this.set({ seatId: null, code: null, hostId: null, lobby: null, game: null, prevView: null, duels: null, reveal: null, acting: false, restoring: false, notice });
     this.flushQueue();
   }
 
@@ -474,7 +503,7 @@ export class GameClient {
   private endLocal(): void {
     this.localGame?.stop();
     this.localGame = null;
-    this.set({ local: false, seatId: null, code: null, hostId: null, game: null, prevView: null, duels: null, acting: false, notice: 'left' });
+    this.set({ local: false, seatId: null, code: null, hostId: null, game: null, prevView: null, duels: null, reveal: null, acting: false, notice: 'left' });
   }
 
   // ---------- sending ----------
@@ -502,32 +531,53 @@ export class GameClient {
     this.send({ t: 'join', code, name });
   }
 
-  /** Play against bots right here in the browser: no server needed, so it starts at once and works offline. */
+  /** Host a room with its settings chosen up front; the lobby follows. */
+  createRoom(name: string, settings: RoomConfig): void {
+    this.set({ notice: null, error: null });
+    this.send({ t: 'createRoom', name, settings });
+  }
+
+  /** Host, in the lobby: change the room's settings. */
+  roomConfig(settings: Partial<RoomConfig>): void {
+    this.send({ t: 'roomConfig', settings });
+  }
+
+  /** Play against 2–6 bots right here in the browser: no server needed, so it starts at once and works offline. */
   solo(name: string, bots: number, level: BotLevel): void {
     this.startLocal((deps) => LocalGame.start(deps, name, bots, level));
   }
 
-  /** Look for strangers to play with; size null means any table. */
-  quickMatch(name: string, size: Queue): void {
-    this.quickReq = { t: 'queueJoin', kind: 'casual', queue: size, name };
-    this.set({ notice: null, error: null, quick: { size, searching: 0, since: this.now() } });
+  /** Look for strangers in a Casual or Ranked queue. */
+  queueJoin(kind: 'casual' | 'ranked', queue: Queue, name: string): void {
+    this.queueReq = { t: 'queueJoin', kind, queue, name };
+    this.set({ notice: null, error: null, socialError: null, queue: { kind, queue, searching: 0, since: this.now() } });
     // Not open yet: onOpen sends it.
-    if (this.ws?.readyState === OPEN && !this.rejoinPending) this.raw(this.quickReq);
+    if (this.ws?.readyState === OPEN && !this.rejoinPending) this.raw(this.queueReq);
   }
 
-  quickCancel(): void {
-    if (!this.quickReq) return;
-    this.quickReq = null;
-    this.set({ quick: null });
+  queueLeave(): void {
+    if (!this.queueReq) return;
+    this.queueReq = null;
+    this.set({ queue: null });
     this.send({ t: 'queueLeave' });
   }
 
-  /** Stop searching and play now against Normal bots, here in the browser. */
-  quickBots(): void {
-    if (!this.quickReq) return;
-    const { name } = this.quickReq;
-    this.quickCancel();
-    this.solo(name, 2, 'normal');
+  /** The Rooms tab opened: keep the public room list coming. */
+  watchRooms(): void {
+    this.watchingRooms = true;
+    if (this.ws?.readyState === OPEN) this.raw({ t: 'roomsWatch' });
+  }
+
+  unwatchRooms(): void {
+    if (!this.watchingRooms) return;
+    this.watchingRooms = false;
+    this.set({ rooms: null });
+    if (this.ws?.readyState === OPEN) this.raw({ t: 'roomsUnwatch' });
+  }
+
+  /** The draw animation is over (or was skipped). */
+  clearReveal(): void {
+    if (this.state.reveal) this.set({ reveal: null });
   }
 
   leave(): void {
@@ -665,13 +715,19 @@ export class GameClient {
     this.set({ invites: this.state.invites.filter((i) => i !== invite) });
   }
 
-  requestProfile(): void {
-    this.send({ t: 'profile' });
+  /** My profile, or another player's (read-only). */
+  requestProfile(username?: string): void {
+    this.send(username ? { t: 'profile', username } : { t: 'profile' });
   }
 
-  /** Interim until the new Leaderboards tab: the friends board of the 1v1 ranked queue. */
-  requestLeaderboard(): void {
-    this.send({ t: 'leaderboard', queue: '1v1', scope: 'friends' });
+  requestLeaderboard(queue: Queue, scope: Scope, search?: string): void {
+    const q = search?.trim();
+    this.send(q ? { t: 'leaderboard', queue, scope, search: q } : { t: 'leaderboard', queue, scope });
+  }
+
+  /** ISO-3166 alpha-2 code, or null to hide my flag. */
+  setCountry(country: string | null): void {
+    this.send({ t: 'setCountry', country });
   }
 
   changePassword(current: string, next: string): void {

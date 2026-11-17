@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest';
 import type { FriendList, LobbyState } from '@arcane/protocol';
 import { harness, memoryStorage } from './fakeSocket';
-import { renderApp } from './render';
+import { goTab, openMore, renderApp } from './render';
 
 afterEach(cleanup);
 
@@ -86,10 +86,10 @@ describe('account client', () => {
 });
 
 describe('account screens', () => {
-  it('guests still see Create game; the account screen signs up', () => {
+  it('guests see Guest and Log in; the account screen signs up', () => {
     const h = renderApp();
-    expect(screen.getByRole('button', { name: 'Create game' })).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Log in or create an account' }));
+    expect(screen.getByText('Guest')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Log in' }));
     fireEvent.click(screen.getByRole('button', { name: 'New here? Create an account' }));
     fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'Ana' } });
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'secret1' } });
@@ -108,7 +108,7 @@ describe('account screens', () => {
       h.sock().receive({ t: 'account', username: 'Ana' });
       h.sock().receive({ t: 'friends', list: list({ friends: [{ username: 'Bob', online: true }], incoming: ['Cyd'], outgoing: ['Dee'] }) });
     });
-    fireEvent.click(screen.getByRole('button', { name: /Friends · 1 online/ }));
+    openMore('Friends');
     expect(screen.getByText('Online')).toBeTruthy();
     expect(screen.getByText('Sent')).toBeTruthy();
     // Invites only make sense inside a room.
@@ -126,13 +126,14 @@ describe('account screens', () => {
     expect(screen.getByRole('alert').textContent).toContain('No player has that username.');
   });
 
-  it('logged-in players have no name field and play under their username', () => {
+  it('logged-in players play under their username', () => {
     const h = renderApp();
-    expect(screen.getByLabelText('Your name')).toBeTruthy();
     act(() => h.sock().receive({ t: 'account', username: 'Ana_7' }));
-    expect(screen.queryByLabelText('Your name')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Create game' }));
-    expect(h.sock().sent).toContainEqual({ t: 'create', name: 'Ana_7' });
+    expect(screen.getByRole('button', { name: 'Open my profile' }).textContent).toContain('Ana_7');
+    goTab('Rooms');
+    fireEvent.click(screen.getByRole('button', { name: 'Create Room' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Create Room' }));
+    expect(h.sock().sent).toContainEqual(expect.objectContaining({ t: 'createRoom', name: 'Ana_7' }));
   });
 
   it('invites friends from the lobby, offline ones too (reached by notification)', () => {

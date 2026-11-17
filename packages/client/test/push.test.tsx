@@ -4,7 +4,7 @@ import { createConnectivity, createInstall, createUpdate } from '../src/pwa/inst
 import { base64UrlToBytes, createPush, type PushEnv, type SubscriptionLike } from '../src/pwa/push';
 import { fakeEnv } from './fakePwa';
 import { memoryStorage } from './fakeSocket';
-import { renderApp } from './render';
+import { openMore, renderApp } from './render';
 
 afterEach(cleanup);
 
@@ -125,7 +125,7 @@ describe('notifications switch', () => {
       h.sock().receive({ t: 'pushKey', key });
       h.sock().receive({ t: 'friends', list: { friends: [], incoming: [], outgoing: [] } });
     });
-    fireEvent.click(screen.getAllByRole('button', { name: /^Friends/ })[0]);
+    openMore('Friends');
   };
 
   it('is hidden when the server has push off', async () => {
@@ -176,7 +176,7 @@ describe('notifications switch', () => {
       again.h.sock().receive({ t: 'account', username: 'Ana' });
       again.h.sock().receive({ t: 'pushKey', key: KEY });
     });
-    fireEvent.click(screen.getAllByRole('button', { name: /Ana|Account/ })[0]);
+    openMore('Account settings');
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Log out' }));
     });

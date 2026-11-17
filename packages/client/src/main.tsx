@@ -1,4 +1,6 @@
-import { StrictMode } from 'react';
+import { lazy, StrictMode, Suspense } from 'react';
+import { createApi, deviceId, deviceSummary, withDevice } from './net/api';
+import { loadAccountToken } from './net/session';
 import { createRoot } from 'react-dom/client';
 import { GameClient, type SocketLike } from './net/client';
 import { beaconSend, createReporter, installErrorReporting, reportUrl } from './net/errors';
@@ -19,17 +21,32 @@ const url = (import.meta.env.VITE_SERVER_URL as string | undefined) ?? defaultSe
 const reportError = createReporter({ url: reportUrl(url), version: __APP_VERSION__, page: () => location.pathname, send: beaconSend });
 installErrorReporting(window, reportError);
 
+// A random id for this device (no name, no IP): the usage numbers count devices, never people's details.
+const device = deviceId(localStorage);
+const api = createApi({
+  serverUrl: url,
+  fetch: (...a) => fetch(...a),
+  device,
+  version: __APP_VERSION__,
+  deviceInfo: () => deviceSummary(navigator.userAgent, window.innerWidth, window.innerHeight),
+});
+const ADMIN_PATH = '/admin';
+const isAdmin = location.pathname.replace(/\/+$/, '') === ADMIN_PATH;
+if (!isAdmin) api.track({ kind: 'open' }, loadAccountToken(localStorage));
+
 const client = new GameClient({
   url,
   // The browser WebSocket has the SocketLike shape; its handler types are just stricter.
-  createSocket: (u) => new WebSocket(u) as unknown as SocketLike,
+  createSocket: (u) => new WebSocket(withDevice(u, device)) as unknown as SocketLike,
+  api,
   storage: localStorage,
   setTimeout: (fn, ms) => window.setTimeout(fn, ms),
   clearTimeout: (id) => window.clearTimeout(id as number),
 });
-client.start();
+// The hidden admin page does not join the game at all.
+if (!isAdmin) client.start();
 // A free host sleeps when idle; an HTTP request wakes it right away, while the socket keeps retrying.
-fetch(healthUrl(url), { cache: 'no-store', mode: 'no-cors' }).then(() => client.wakeUp(), () => {});
+if (!isAdmin) fetch(healthUrl(url), { cache: 'no-store', mode: 'no-cors' }).then(() => client.wakeUp(), () => {});
 
 const room = new URLSearchParams(location.search).get('room') ?? undefined;
 if (room) history.replaceState(null, '', location.pathname);
@@ -63,7 +80,17 @@ const sound = createSoundBoard({
   ...(typeof navigator.vibrate === 'function' ? { vibrate: (p: number | number[]) => navigator.vibrate(p) } : {}),
 });
 
+// Loaded only on /admin, so players never download it.
+const AdminPage = lazy(() => import('./admin/Admin').then((m) => ({ default: m.Admin })));
+
 createRoot(document.getElementById('root')!).render(
+  isAdmin ? (
+    <StrictMode>
+      <Suspense fallback={null}>
+        <AdminPage serverUrl={url} token={() => loadAccountToken(localStorage)} />
+      </Suspense>
+    </StrictMode>
+  ) : (
   <StrictMode>
     <ErrorBoundary onError={reportError}>
       <PwaProvider pwa={pwa}>
@@ -74,5 +101,6 @@ createRoot(document.getElementById('root')!).render(
         </ClientProvider>
       </PwaProvider>
     </ErrorBoundary>
-  </StrictMode>,
+  </StrictMode>
+  ),
 );

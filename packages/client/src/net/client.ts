@@ -20,6 +20,7 @@ import type {
 } from './menuTypes';
 import { termDuels } from '../game/derive';
 import { LocalGame, loadLocal, type LocalDeps } from './local';
+import { randomId, type Api, type FeedbackDraft, type FeedbackResult } from './api';
 import { clearAccountToken, clearSession, loadAccountToken, loadSession, saveAccountToken, saveSession, type Session } from './session';
 
 export interface SocketLike {
@@ -40,6 +41,8 @@ export interface ClientDeps {
   clearTimeout(id: unknown): void;
   /** Wall clock (ms); Date.now when not given. */
   now?(): number;
+  /** Feedback and usage events over HTTP; both are off without it (tests). */
+  api?: Api;
 }
 
 /** A Casual or Ranked queue search in progress. */
@@ -191,6 +194,8 @@ export class GameClient {
   private quietLeave = false;
   /** The solo game running in this browser, if any. */
   private localGame: LocalGame | null = null;
+  /** Usage numbers for the offline game: its random id and the steps already reported. */
+  private localTrack: { game: string; term2: boolean; done: boolean } | null = null;
   /** Saved login, resent on every (re)connect so presence follows the socket. */
   private accountToken: string | null = null;
   /** The queue request, resent after a reconnect (the server drops the queue entry with the socket). */
@@ -454,7 +459,37 @@ export class GameClient {
     }
   }
 
+  /** Offline Bots games never reach the server, so their start, Term 2 and finish are reported here. */
+  private trackLocal(msg: GameMsg): void {
+    const api = this.deps.api;
+    // state.local, not this.localGame: the first message arrives while the game is still being made.
+    if (!api || !this.state.local) return;
+    const ev = (kind: 'game_start' | 'term2' | 'game_finish', game: string) => api.track({ kind, mode: 'bots', game }, this.accountToken);
+    const fresh = !!msg.reveal || !this.localTrack || (this.localTrack.done && !msg.result);
+    if (fresh) {
+      this.localTrack = { game: randomId(), term2: false, done: false };
+      // A game picked up again after a reload was already counted when it started.
+      if (msg.reveal) ev('game_start', this.localTrack.game);
+    }
+    const t = this.localTrack!;
+    if (!t.term2 && (msg.view.term >= 2 || msg.result)) {
+      t.term2 = true;
+      ev('term2', t.game);
+    }
+    if (!t.done && msg.result) {
+      t.done = true;
+      ev('game_finish', t.game);
+    }
+  }
+
+  /** Send in-app feedback as the logged-in account. */
+  async sendFeedback(d: FeedbackDraft): Promise<FeedbackResult> {
+    if (!this.accountToken || !this.state.account) return 'login';
+    return this.deps.api ? this.deps.api.feedback(d, this.accountToken) : 'error';
+  }
+
   private onGame(msg: GameMsg): void {
+    this.trackLocal(msg);
     // A finished game followed by a fresh one (play again): nothing carries over.
     const restart = !!this.state.game?.result && !msg.result;
     const prev = restart ? null : (this.state.game?.view ?? null);

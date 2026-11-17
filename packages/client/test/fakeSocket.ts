@@ -41,7 +41,7 @@ export function memoryStorage(): ClientDeps['storage'] & { data: Map<string, str
 }
 
 /** A GameClient over fake sockets and manual timers. */
-export function harness(storage = memoryStorage()) {
+export function harness(storage = memoryStorage(), extra: Partial<ClientDeps> = {}) {
   const sockets: FakeSocket[] = [];
   const timers: { fn: () => void; ms: number; id: number }[] = [];
   let nextId = 1;
@@ -62,6 +62,7 @@ export function harness(storage = memoryStorage()) {
       const i = timers.findIndex((t) => t.id === id);
       if (i >= 0) timers.splice(i, 1);
     },
+    ...extra,
   });
   const sock = () => sockets[sockets.length - 1];
   const runTimers = () => timers.splice(0).forEach((t) => t.fn());

@@ -208,3 +208,9 @@ button.outline { background: transparent; border-color: rgba(232, 181, 74, 0.7);
 .focus-panel h4 { color: var(--gold); font-size: 1.05rem; margin-top: 4px; }
 .game-desk .hand { flex-wrap: wrap; justify-content: center; overflow: visible; scroll-snap-type: none; margin: 0; padding: 12px 0 18px; }
 .game-desk .actions { max-width: 720px; }
+
+/* In-app feedback (More › Feedback). */
+.feedback-form textarea { width: 100%; resize: vertical; min-height: 7em; }
+.feedback-shot { display: flex; align-items: flex-start; gap: var(--s3); }
+.feedback-shot img { max-width: 50%; max-height: 220px; object-fit: contain; border-radius: var(--r-sm); border: 1px solid var(--line); }
+.feedback-thanks { align-items: flex-start; }

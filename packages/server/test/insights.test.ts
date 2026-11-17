@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { computeNumbers, DAY_MS, MemoryInsights, type AnalyticsEvent } from '../src/insights';
+import { computeNumbers, DAY_MS, MemoryInsights, type AnalyticsEvent, type Insights } from '../src/insights';
+import { PgInsights } from '../src/pgInsights';
+import { PgStore } from '../src/pgStore';
+import { MemoryStore } from '../src/store';
 import { open, seal, boxKey } from '../src/secretBox';
 import type { GameEvent } from '../src/room';
 import { lobbyWith, playToEnd } from './fakes';
@@ -106,3 +109,58 @@ describe('room game events', () => {
     }
   });
 });
+
+/** The same checks for the memory and Postgres insights stores. */
+function contract(name: string, make: () => Promise<{ insights: Insights; user(name: string): Promise<string>; done(): Promise<void> }>) {
+  describe(name, () => {
+    it('stores events, feedback and the admin factor', async () => {
+      const { insights, user, done } = await make();
+      try {
+        const t = D0 + 5000;
+        const dev = `dev-${Math.random().toString(36).slice(2, 12)}-xxxxxxxx`;
+        await insights.addEvent(ev('open', t, dev));
+        await insights.addEvent(ev('open', t + 1, dev)); // same day: ignored
+        await insights.addEvent(ev('game_start', t + 2, dev, { mode: 'bots', game: 'game-abc-1' }));
+        const mine = (await insights.events(D0)).filter((e) => e.device === dev);
+        expect(mine.map((e) => [e.kind, e.at, e.mode ?? null, e.game ?? null])).toEqual([
+          ['open', t, null, null],
+          ['game_start', t + 2, 'bots', 'game-abc-1'],
+        ]);
+        expect((await insights.newDevices(D0)).get(dev)).toBe(t);
+
+        const uid = await user(`fb${Math.random().toString(36).slice(2, 8)}`);
+        const id = await insights.addFeedback({ userId: uid, username: 'Ana', kind: 'idea', text: 'More!', device: 'd', version: '1', screen: 'more', screenshot: 'data:image/png;base64,AA==', at: t });
+        const item = (await insights.feedback(500)).find((f) => f.id === id)!;
+        expect(item).toMatchObject({ username: 'Ana', kind: 'idea', text: 'More!', read: false, hasScreenshot: true, at: t });
+        expect(await insights.screenshot(id)).toBe('data:image/png;base64,AA==');
+        await insights.setFeedbackRead(id, true);
+        expect((await insights.feedback(500)).find((f) => f.id === id)!.read).toBe(true);
+
+        expect(await insights.isAdmin(uid)).toBe(false);
+        expect(await insights.adminFactor(uid)).toBeNull();
+        const f = { secretBox: 'v1.a.b.c', confirmed: true, backupHashes: ['h1', 'h2'], lastStep: 123456, failures: 2, lockedUntil: t + 60_000 };
+        await insights.saveAdminFactor(uid, f);
+        expect(await insights.adminFactor(uid)).toEqual(f);
+        await insights.saveAdminFactor(uid, { ...f, backupHashes: [], lockedUntil: 0 });
+        expect(await insights.adminFactor(uid)).toEqual({ ...f, backupHashes: [], lockedUntil: 0 });
+      } finally {
+        await done();
+      }
+    });
+  });
+}
+
+contract('memory insights', async () => {
+  const store = new MemoryStore();
+  return { insights: new MemoryInsights(), user: async (n) => (await store.createUser(n, 'x'))!.id, done: async () => {} };
+});
+
+// Runs against a real database only when one is provided (never the production one).
+const testDb = process.env.TEST_DATABASE_URL;
+if (testDb)
+  contract('postgres insights', async () => {
+    const store = new PgStore(testDb);
+    await store.init();
+    return { insights: new PgInsights((sql, p) => store.query(sql, p)), user: async (n) => (await store.createUser(n, 'x'))!.id, done: () => store.close() };
+  });
+else it.skip('postgres insights (set TEST_DATABASE_URL to run)', () => {});

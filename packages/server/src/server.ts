@@ -2,7 +2,11 @@ import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { encode, isSocialMessage, MAX_MESSAGE_BYTES, parseClientMessage, type CloseReason } from '@arcane/protocol';
+import { AdminApi } from './admin';
+import { Api, DEVICE_RE } from './api';
 import { CLIENT_ERROR_PATH, clientErrorHandler, type ClientErrorOptions } from './clientErrors';
+import { MemoryInsights, type AnalyticsEvent, type Insights } from './insights';
+import type { BoxKey } from './secretBox';
 import { realClock } from './clock';
 import { RoomManager, type ManagerOptions } from './manager';
 import type { Conn } from './room';
@@ -25,12 +29,19 @@ export interface ServerOptions {
   clientErrors?: ClientErrorOptions;
   /** Web Push settings (from the VAPID env vars); notifications are off when missing. */
   push?: PushConfig | null;
+  /** Feedback, usage numbers and the admin's second factor; in memory when not given. */
+  insights?: Insights;
+  /** Encryption key for the admin's authenticator secret (from ADMIN_KEY); the admin page is off without it. */
+  adminKey?: BoxKey | null;
+  /** Clock for the HTTP APIs (tests move it). */
+  now?: () => number;
 }
 
 export interface RunningServer {
   port: number;
   manager: RoomManager;
   social: Social;
+  insights: Insights;
   close(): Promise<void>;
 }
 
@@ -55,6 +66,12 @@ function wrap(ws: WebSocket): Conn {
 /** Start the HTTP + WebSocket server. `port: 0` picks a free port. */
 export function startServer(opts: ServerOptions): Promise<RunningServer> {
   const store = opts.store ?? new MemoryStore();
+  const insights = opts.insights ?? new MemoryInsights();
+  const now = opts.now ?? Date.now;
+  /** The random device id each app sends when it connects (?d=...), for the usage numbers. */
+  const deviceOf = new WeakMap<Conn, string>();
+  const track = (e: Omit<AnalyticsEvent, 'at'>) =>
+    void insights.addEvent({ ...e, at: now() }).catch((err: Error) => console.error('usage event failed:', err.message));
   // Rooms ask Social who is logged in on a connection and hand it finished games to record.
   const manager: RoomManager = new RoomManager(
     {
@@ -65,6 +82,9 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
       apart: (a, b) => social.apart(a, b),
       avatarOf: (c) => social.userOf(c)?.avatar ?? null,
       onResults: (r) => social.recordResults(r),
+      onGameEvent: (e) => {
+        for (const p of e.players) track({ kind: e.kind, device: (p.conn && deviceOf.get(p.conn)) ?? null, userId: p.accountId, mode: e.mode, game: e.game });
+      },
     },
     realClock,
   );
@@ -73,6 +93,16 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
     clock: realClock,
     push: opts.push ?? null,
     onAvatar: (conns) => conns.forEach((c) => manager.refreshAvatar(c)),
+    onLogin: (c, u) => track({ kind: 'active', device: deviceOf.get(c) ?? null, userId: u.id }),
+    onSignup: (c, u) => track({ kind: 'signup', device: deviceOf.get(c) ?? null, userId: u.id }),
+  });
+  const api = new Api({ store, insights, now });
+  const admin = new AdminApi({
+    store,
+    insights,
+    key: opts.adminKey ?? null,
+    now,
+    live: () => ({ online: social.onlineCount(), connections: wss.clients.size, gamesInProgress: manager.gamesInProgress() }),
   });
   const serveStatic = opts.staticDir ? staticHandler(opts.staticDir) : null;
   const reportClientError = clientErrorHandler(opts.clientErrors);
@@ -81,6 +111,7 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
       reportClientError(req, res);
       return;
     }
+    if (api.handle(req, res) || admin.handle(req, res)) return;
     if (req.method === 'GET' && req.url === '/health') {
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ ok: true, rooms: manager.size() }));
@@ -98,8 +129,10 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
   const wss = new WebSocketServer({ server: http, maxPayload: MAX_MESSAGE_BYTES });
   const alive = new WeakMap<WebSocket, boolean>();
 
-  wss.on('connection', (ws) => {
+  wss.on('connection', (ws, req) => {
     const conn = wrap(ws);
+    const device = new URL(req.url ?? '/', 'http://x').searchParams.get('d');
+    if (device && DEVICE_RE.test(device)) deviceOf.set(conn, device);
     alive.set(ws, true);
     ws.on('pong', () => alive.set(ws, true));
     ws.on('message', (data, isBinary) => {
@@ -143,6 +176,7 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
         port: (http.address() as AddressInfo).port,
         manager,
         social,
+        insights,
         close: () =>
           new Promise<void>((done) => {
             clearInterval(heartbeat);

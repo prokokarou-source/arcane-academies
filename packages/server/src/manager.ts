@@ -100,6 +100,11 @@ export class RoomManager {
     return this.rooms.size;
   }
 
+  /** Games in progress with at least one person connected. */
+  gamesInProgress(): number {
+    return [...this.rooms.values()].filter((r) => r.playingLive()).length;
+  }
+
   /** How many players wait in all queues. */
   searching(): number {
     return this.waiting.length;

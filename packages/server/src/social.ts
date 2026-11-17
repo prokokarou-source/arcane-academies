@@ -37,6 +37,10 @@ export interface SocialOptions {
   push?: PushConfig | null;
   /** A user's avatar changed; these are their logged-in connections (rooms show the new one). */
   onAvatar?(conns: Conn[]): void;
+  /** A connection logged in (signup, login, saved login or recovery): usage numbers count active accounts. */
+  onLogin?(conn: Conn, user: User): void;
+  /** A new account was made on this connection. */
+  onSignup?(conn: Conn, user: User): void;
 }
 
 /** Failed logins allowed per username inside the window before further tries are refused. */
@@ -88,6 +92,11 @@ export class Social {
 
   isOnline(userId: string): boolean {
     return (this.userConns.get(userId)?.size ?? 0) > 0;
+  }
+
+  /** Accounts with at least one open logged-in connection. */
+  onlineCount(): number {
+    return this.userConns.size;
   }
 
   userOf(conn: Conn): User | null {
@@ -249,6 +258,7 @@ export class Social {
     if (aiProfile(username)) return this.fail(conn, 'username_taken');
     const user = await this.store.createUser(username, await hashPassword(password));
     if (!user) return this.fail(conn, 'username_taken');
+    this.opts.onSignup?.(conn, user);
     await this.startSession(conn, user);
     await this.issueRecoveryCode(conn, user.id);
   }
@@ -439,6 +449,7 @@ export class Social {
     set.add(conn);
     this.userConns.set(user.id, set);
     if (!wasOnline) this.announce(user, true);
+    this.opts.onLogin?.(conn, user);
   }
 
   private unbind(conn: Conn): void {

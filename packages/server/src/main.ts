@@ -1,7 +1,9 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { guardProcess } from './clientErrors';
+import { PgInsights } from './pgInsights';
 import { PgStore } from './pgStore';
+import { boxKey } from './secretBox';
 import { pushFromEnv } from './push';
 import { startServer } from './server';
 
@@ -25,6 +27,12 @@ if (process.env.DATABASE_URL) {
   await store.init().catch((e: Error) => console.error('database not ready yet:', e.message));
 }
 
+// Feedback, usage numbers and the admin's second factor share the accounts database.
+const insights = store ? new PgInsights((sql, params) => store!.query(sql, params)) : undefined;
+if (insights) await insights.init().catch((e: Error) => console.error('insights tables not ready yet:', e.message));
+// The admin page (/admin) needs ADMIN_KEY to encrypt the authenticator secret; it is off without it.
+const adminKey = boxKey(process.env.ADMIN_KEY);
+
 // Web Push for invites and friend requests; off unless all three VAPID_* variables are set.
 const push = pushFromEnv(process.env);
 
@@ -32,6 +40,8 @@ const server = await startServer({
   port,
   host,
   ...(store ? { store } : {}),
+  ...(insights ? { insights } : {}),
+  adminKey,
   push,
   ...(staticDir ? { staticDir } : {}),
   manager: {
@@ -41,7 +51,7 @@ const server = await startServer({
   },
 });
 console.log(
-  `Arcane Academies server listening on :${server.port}${staticDir ? ' (serving the web client)' : ''}; accounts: ${store ? 'database' : 'in memory'}; push: ${push ? 'on' : 'off'}`,
+  `Arcane Academies server listening on :${server.port}${staticDir ? ' (serving the web client)' : ''}; accounts: ${store ? 'database' : 'in memory'}; push: ${push ? 'on' : 'off'}; admin: ${adminKey ? 'on' : 'off'}`,
 );
 
 const shutdown = () => {

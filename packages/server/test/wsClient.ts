@@ -26,9 +26,9 @@ export class TestClient {
     });
   }
 
-  static connect(port: number): Promise<TestClient> {
+  static connect(port: number, query = ''): Promise<TestClient> {
     return new Promise((resolve, reject) => {
-      const ws = new WebSocket(`ws://127.0.0.1:${port}`);
+      const ws = new WebSocket(`ws://127.0.0.1:${port}${query}`);
       ws.once('open', () => resolve(new TestClient(ws)));
       ws.once('error', reject);
     });

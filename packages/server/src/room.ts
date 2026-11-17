@@ -68,6 +68,16 @@ export interface RoomOptions {
   avatarOf?(conn: Conn): Avatar | null;
   /** Called once per finished game with one record per account seated in it. */
   onResults?(records: GameRecord[]): void;
+  /** Usage numbers: a game started, reached Term 2 or finished, with the people (never bots or AI) at the table. */
+  onGameEvent?(e: GameEvent): void;
+}
+
+export interface GameEvent {
+  kind: 'game_start' | 'term2' | 'game_finish';
+  /** Random id shared by the events of one game. */
+  game: string;
+  mode: 'casual' | 'ranked' | 'room';
+  players: { conn: Conn | null; accountId: string | null }[];
 }
 
 /** What made a room and how it is set up. */
@@ -213,6 +223,9 @@ export class Room {
   /** AI opponents thinking this turn: engine seat -> timer (kept after it fires so the turn is not thought twice). */
   private aiTimers = new Map<number, unknown>();
   private aiTurn = -1;
+  /** Usage numbers: the current game's id and whether it already reached Term 2. */
+  private gameId = '';
+  private term2Sent = false;
 
   constructor(
     readonly code: string,
@@ -235,6 +248,11 @@ export class Room {
     if (!host) return null;
     const { sideMode, turnTimerMs, seats, bots } = this.config;
     return { code: this.code, host: host.name, sideMode, turnTimerMs, seats, taken: this.members.length, bots };
+  }
+
+  /** A game is being played with at least one person still connected (for the admin's "live now"). */
+  playingLive(): boolean {
+    return !this.closed && this.phase === 'game' && this.state?.phase !== 'ended' && this.members.some((m) => m.kind === 'human' && m.conn && !m.left);
   }
 
   hasMember(conn: Conn): boolean {
@@ -609,6 +627,9 @@ export class Room {
     this.recorded = false;
     this.turnSeq = 0;
     this.timerSeq = -1;
+    this.gameId = randomBytes(9).toString('base64url');
+    this.term2Sent = false;
+    this.gameEvent('game_start');
     this.advance();
   }
 
@@ -770,8 +791,13 @@ export class Room {
       this.turnSeq++;
     }
     this.state = s;
+    if (!this.term2Sent && (s.term >= 2 || s.phase === 'ended')) {
+      this.term2Sent = true;
+      this.gameEvent('term2');
+    }
     if (s.phase === 'ended' && !this.recorded) {
       this.record(s);
+      this.gameEvent('game_finish');
       this.armLobbyTimer();
     }
     this.armTurnTimer();
@@ -814,6 +840,13 @@ export class Room {
     for (const t of this.aiTimers.values()) this.clock.clearTimer(t);
     this.aiTimers.clear();
     this.aiTurn = -1;
+  }
+
+  /** Tell the usage numbers about the people still at the table (those who left on purpose do not count). */
+  private gameEvent(kind: GameEvent['kind']): void {
+    if (!this.opts.onGameEvent) return;
+    const players = this.members.filter((m) => m.kind === 'human' && !m.left).map((m) => ({ conn: m.conn, accountId: m.accountId ?? null }));
+    if (players.length) this.opts.onGameEvent({ kind, game: this.gameId, mode: this.setup.kind, players });
   }
 
   /** One result per account in the game (an account in two seats counts once). */

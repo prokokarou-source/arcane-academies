@@ -6,6 +6,8 @@ import { createGame } from '../src/setup';
 import { finalScores, winners } from '../src/scoring';
 import type { BotLevel, GameState, SeatConfig } from '../src/types';
 import { fixedGame, withBuilt, withCoins, withHand, seats } from './helpers';
+import { cardDef } from '../src/data/cards';
+import { hardChoose, hardPlanOf } from '../src/bots/hard';
 
 const fill = (id: string) => Array(6).fill(id) as string[];
 
@@ -111,5 +113,59 @@ describe('hard bot', () => {
     }
     expect(score.hard / games).toBeGreaterThan(score.normal / games + 3);
     expect(won.hard).toBeGreaterThan(games * 0.65);
+  });
+});
+
+describe('hard bot: long-game sense', () => {
+  const familyOf = (s: GameState, seat: number, a: { type: string; cardUid: string }) =>
+    a.type === 'build' ? cardDef(s.players[seat].hand.find((c) => c.uid === a.cardUid)!.defId).family : a.type;
+  const hardSeats = (n: number) => Array.from({ length: n }, (_, i) => ({ kind: 'bot', name: `B${i}`, botLevel: 'hard' }) as SeatConfig);
+
+  it('opens with resource production instead of research', () => {
+    // Seed 7000, seat 2 (Chronomancy): four research cards next to Essence Still, Dragon Roost and Inkcap Grove.
+    // The previous Hard bot took a research card here.
+    const s = createGame({ seed: 7000, seats: hardSeats(3) });
+    const fam = familyOf(s, 2, botPick(s, 2, 'hard'));
+    expect(['basic', 'rare']).toContain(fam);
+  });
+
+  it('rarely opens with research across many deals', () => {
+    let research = 0;
+    let total = 0;
+    for (let g = 0; g < 20; g++) {
+      const s = createGame({ seed: 7000 + g, seats: hardSeats(3 + (g % 5)) });
+      for (const p of s.players) {
+        total++;
+        if (familyOf(s, p.seat, botPick(s, p.seat, 'hard')) === 'research') research++;
+      }
+    }
+    expect(research / total).toBeLessThan(0.2);
+  });
+
+  it('raises a tower stage when it is behind schedule', () => {
+    // Term III, turn 3, no stage yet; seat0 (Pyromancy A) makes the 2 herbs its first stage needs.
+    let s = withBuilt(fixedGame(), 0, ['t1-iron-seam', 't1-mandrake-bed', 't2-mandrake-terraces', 't1-reading-hall', 't2-dueling-grounds']);
+    s = { ...s, term: 3, turn: 3 };
+    s = withCoins(s, 0, 4);
+    s = withHand(s, 0, ['t3-moonlit-gardens', 't3-council-chamber', 't3-merchant-spire', 't3-comet-watch', 't3-siege-golem-pit']);
+    s = withHand(s, 1, ['t3-archmage-palace', 't3-great-archive-hall', 't3-celestial-dome', 't3-mine-charter', 't3-dragon-riders']);
+    s = withHand(s, 2, ['t3-storm-bastion', 't3-elixir-cellar', 't3-star-observatory', 't3-runic-university', 't3-philosophers-forge']);
+    expect(botPick(s, 0, 'hard').type).toBe('tower');
+  });
+
+  it('never ends a game without a tower stage', () => {
+    for (let g = 0; g < 8; g++) {
+      let s = createGame({ seed: 500 + g, seats: hardSeats(3 + (g % 5)) });
+      while (s.phase !== 'ended') s = resolveTurn(autoPlay(s));
+      for (const p of s.players) expect(p.towerStages).toBeGreaterThan(0);
+    }
+  });
+
+  it('has a fixed game plan per seat and reports how close its choice was', () => {
+    const s = createGame({ seed: 42, seats: hardSeats(4) });
+    expect(hardPlanOf(s, 1)).toBe(hardPlanOf(s, 1));
+    const c = hardChoose(s, 1);
+    expect(['duelist', 'scholar', 'builder', 'merchant']).toContain(c.plan);
+    expect(c.margin).toBeGreaterThanOrEqual(0);
   });
 });

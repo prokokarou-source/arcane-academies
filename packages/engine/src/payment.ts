@@ -56,9 +56,14 @@ export function planPayment(s: GameState, seat: number, cost: Cost, chainFrom?: 
     ...toSlots(productionOf(s, rightOf(s, seat)), 'right'),
   ];
   const price = { left: {} as Record<string, number>, right: {} as Record<string, number> };
+  const discounts = effectsOf(s, seat).filter((e) => e.kind === 'tradeDiscount');
+  const priceOf = (side: Side, r: Resource) => {
+    const group = (RARE_RESOURCES as readonly string[]).includes(r) ? 'rare' : 'basic';
+    return discounts.some((e) => e.kind === 'tradeDiscount' && e.group === group && e.sides.includes(side)) ? 1 : 2;
+  };
   for (const r of new Set(units)) {
-    price.left[r] = tradePrice(s, seat, 'left', r);
-    price.right[r] = tradePrice(s, seat, 'right', r);
+    price.left[r] = priceOf('left', r);
+    price.right[r] = priceOf('right', r);
   }
 
   const budget = p.coins - bank;

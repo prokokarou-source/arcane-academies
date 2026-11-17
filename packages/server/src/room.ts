@@ -86,6 +86,34 @@ export function checkConfig(c: RoomConfig, humans: number): string | null {
   return null;
 }
 
+export interface Finish {
+  seat: number;
+  total: number;
+  coins: number;
+  /** Ranked: left the game (or was still away at the end). */
+  quit?: boolean;
+}
+
+/**
+ * Finishing place per seat (1 = first).
+ * Ranked: equal totals share a place (an Elo draw) and everyone who quit shares last place, below all who stayed.
+ * Other games: equal totals are split by coins; equal totals and coins share a place.
+ */
+export function placesOf(finish: Finish[], ranked: boolean): Map<number, number> {
+  const out = new Map<number, number>();
+  if (!ranked) {
+    for (const f of finish) {
+      out.set(f.seat, 1 + finish.filter((b) => b.total > f.total || (b.total === f.total && b.coins > f.coins)).length);
+    }
+    return out;
+  }
+  const stayed = finish.filter((f) => !f.quit);
+  for (const f of finish) {
+    out.set(f.seat, f.quit ? stayed.length + 1 : 1 + stayed.filter((b) => b.total > f.total).length);
+  }
+  return out;
+}
+
 export const MAX_SEATS = 7;
 const TAKEOVER_LEVEL: BotLevel = 'normal';
 
@@ -660,6 +688,16 @@ export class Room {
     const rivals = scores.filter((b) => s.players[b.seat].config.kind !== 'archmage');
     const won = new Set(winners(s));
     const coins = (seat: number) => s.players[seat].coins;
+    const ranked = this.setup.kind === 'ranked';
+    // Ranked: a player who left (or was still away at the end) is last, whatever the bot made of the seat.
+    const quit = (seat: number) => {
+      const x = this.memberAt(seat);
+      return ranked && x?.kind === 'human' && (!!x.left || x.botControlled);
+    };
+    const places = placesOf(
+      rivals.map((b) => ({ seat: b.seat, total: b.total, coins: coins(b.seat), quit: quit(b.seat) })),
+      ranked,
+    );
     const seen = new Set<string>();
     const records: GameRecord[] = [];
     for (const m of this.members) {
@@ -667,13 +705,12 @@ export class Room {
       seen.add(m.accountId);
       const mine = scores.find((b) => b.seat === m.engineSeat);
       if (!mine) continue;
-      const ahead = rivals.filter((b) => b.total > mine.total || (b.total === mine.total && coins(b.seat) > coins(mine.seat)));
       records.push({
         userId: m.accountId,
         academyId: s.players[m.engineSeat].academyId,
         score: mine.total,
-        place: 1 + ahead.length,
-        won: won.has(m.engineSeat),
+        place: places.get(m.engineSeat)!,
+        won: won.has(m.engineSeat) && !quit(m.engineSeat),
         players: this.members.length,
         playedAt: this.clock.now(),
         kind: this.setup.kind,

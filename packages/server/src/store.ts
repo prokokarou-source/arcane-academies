@@ -53,7 +53,7 @@ export interface GameRecord {
   userId: string;
   academyId: string;
   score: number;
-  /** 1 = first; players with equal score and coins share a place. */
+  /** 1 = first. Ranked: equal score shares a place and leavers share last; other games split equal score by coins. */
   place: number;
   /** One of the winners (shared wins count). */
   won: boolean;

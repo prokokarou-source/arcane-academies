@@ -500,10 +500,17 @@ export class GameClient {
     });
   }
 
-  private endLocal(): void {
+  /** End the offline game. `quiet`: the game was over, so there is nothing to tell ("You left the room" would be wrong). */
+  private endLocal(quiet = false): void {
     this.localGame?.stop();
     this.localGame = null;
-    this.set({ local: false, seatId: null, code: null, hostId: null, game: null, prevView: null, duels: null, reveal: null, acting: false, notice: 'left' });
+    this.set({ local: false, seatId: null, code: null, hostId: null, game: null, prevView: null, duels: null, reveal: null, acting: false, notice: quiet ? null : 'left' });
+  }
+
+  /** Offline solo: a fresh game at the same table, straight away. */
+  private restartLocal(): void {
+    this.set({ game: null, prevView: null, duels: null });
+    this.localGame?.rematch();
   }
 
   // ---------- sending ----------
@@ -623,24 +630,21 @@ export class GameClient {
 
   /** After the game, host: back to the lobby to change seats. */
   rematch(): void {
-    if (this.localGame) {
-      // Straight into a new game: there is no lobby to gather in when everyone else is a bot.
-      this.set({ game: null, prevView: null, duels: null });
-      return this.localGame.rematch();
-    }
+    // Offline solo has no lobby (everyone else is a bot): "back to the lobby" means back to the menu.
+    if (this.localGame) return this.endLocal(true);
     this.send({ t: 'rematch' });
   }
 
   /** After the game: I am (not) ready to play again at the same table. */
   playAgain(ready = true): void {
     // Offline solo: everyone else is a bot, so "ready" means "start".
-    if (this.localGame) return ready ? this.rematch() : undefined;
+    if (this.localGame) return ready ? this.restartLocal() : undefined;
     this.send({ t: 'playAgain', ready });
   }
 
   /** After the game, host: start the next game now. */
   playAgainNow(): void {
-    if (this.localGame) return this.rematch();
+    if (this.localGame) return this.restartLocal();
     this.send({ t: 'playAgainNow' });
   }
 

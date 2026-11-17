@@ -80,12 +80,21 @@ describe('solo game in the browser', () => {
     expect(third.client.getState().game).toBeNull();
   });
 
-  it('rematch deals a fresh game with the same bots', () => {
+  it('"Back to lobby" after a solo game returns to the menu instead of starting again', () => {
     const h = harness();
     h.client.start();
     h.client.solo('Ana', 3, 'easy');
     playToEnd(h.client, h.runTimers);
     h.client.rematch();
+    expect(h.client.getState()).toMatchObject({ game: null, local: false, notice: null });
+  });
+
+  it('Play again deals a fresh game with the same bots', () => {
+    const h = harness();
+    h.client.start();
+    h.client.solo('Ana', 3, 'easy');
+    playToEnd(h.client, h.runTimers);
+    h.client.playAgain(true);
     const g = h.client.getState().game!;
     expect(g.result).toBeUndefined();
     expect(g.view).toMatchObject({ term: 1, turn: 1 });

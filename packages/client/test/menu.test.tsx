@@ -318,7 +318,7 @@ describe('offline solo host', () => {
     expect((h.client.getState().game as GameMsg).reveal).toBeUndefined();
     expect(h.client.getState().reveal).toBeNull();
     // Play again draws anew.
-    h.client.rematch();
+    h.client.playAgain(true);
     expect(h.client.getState().reveal).not.toBeNull();
   });
 });

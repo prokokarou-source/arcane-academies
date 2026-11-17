@@ -57,7 +57,7 @@ function ScoreItems(props: { items: ScoreItem[] | undefined }) {
 export function GameEnd(props: { me: number; result: GameResult; seats: SeatStatus[] }) {
   const client = useClient();
   const t = useT();
-  const { seatId, hostId } = useClientState();
+  const { seatId, hostId, local } = useClientState();
   const { result, seats, me } = props;
   const [open, setOpen] = useState<number | null>(me);
   const name = (seat: number) => seats[seat]?.name ?? `#${seat}`;
@@ -149,7 +149,7 @@ export function GameEnd(props: { me: number; result: GameResult; seats: SeatStat
         {canStart && (
           <div className="row stretch">
             <button onClick={() => client.playAgainNow()}>{t('startNow')}</button>
-            <button onClick={() => client.rematch()}>{t('backToLobby')}</button>
+            <button onClick={() => client.rematch()}>{t(local ? 'backToMenu' : 'backToLobby')}</button>
           </div>
         )}
       </div>

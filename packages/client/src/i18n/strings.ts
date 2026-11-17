@@ -367,6 +367,7 @@ export const en = {
   readyTag: 'Ready',
   startNow: 'Start now',
   backToLobby: 'Back to lobby',
+  backToMenu: 'Back to menu',
   avatar: 'Avatar',
   avatarEmblem: 'Emblem',
   avatarColor: 'Colour',

@@ -66,7 +66,7 @@ describe('Play tab', () => {
     expect(g.seats).toHaveLength(5);
     expect(g.seats[0].name).toMatch(/^Guest\d{4}$/);
     const draw = screen.getByRole('dialog', { name: 'The draw' });
-    expect(within(draw).getByText(/Everyone plays side [AB]/)).toBeTruthy();
+    expect(within(draw).getByText(/Side [AB] for every academy/)).toBeTruthy();
     expect(within(draw).getAllByRole('listitem')).toHaveLength(5);
     fireEvent.click(draw);
     expect(screen.queryByRole('dialog', { name: 'The draw' })).toBeNull();

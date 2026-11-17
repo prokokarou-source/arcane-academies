@@ -506,7 +506,7 @@ export const en = {
   academies: 'Academies',
   favourite: 'Favourite',
   theDraw: 'The draw',
-  sideForAll: 'Everyone plays side {side}',
+  sideForAll: 'Side {side} for every academy',
   tapToBegin: 'Tap to begin',
 } as const;
 

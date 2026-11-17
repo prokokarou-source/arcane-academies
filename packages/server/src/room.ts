@@ -53,6 +53,8 @@ export interface RoomOptions {
   /** Server-side defaults. May go outside the host's limits (useful for tests and local play). */
   defaultSettings?: Partial<RoomSettings>;
   seed?: () => number;
+  /** Seat order of a room game (default: a fair random shuffle). Tests pass a fixed order. */
+  shuffle?<T>(xs: T[]): T[];
   /** The account (user id) logged in on this connection, if any. Its seat's result is recorded. */
   accountOf?(conn: Conn): string | null;
   /** The username logged in on this connection, if any; shown on its seat. */
@@ -113,6 +115,15 @@ export function placesOf(finish: Finish[], ranked: boolean): Map<number, number>
     out.set(f.seat, f.quit ? stayed.length + 1 : 1 + stayed.filter((b) => b.total > f.total).length);
   }
   return out;
+}
+
+/** Fisher-Yates with crypto randomness. */
+export function shuffle<T>(xs: T[]): T[] {
+  for (let i = xs.length - 1; i > 0; i--) {
+    const j = randomInt(i + 1);
+    [xs[i], xs[j]] = [xs[j], xs[i]];
+  }
+  return xs;
 }
 
 export const MAX_SEATS = 7;
@@ -524,6 +535,8 @@ export class Room {
   }
 
   private begin(): void {
+    // Rooms: a new seating every game, so neighbours change (bots shuffled with the humans).
+    if (this.setup.kind === 'room') this.members = (this.opts.shuffle ?? shuffle)([...this.members]);
     const n = this.members.length;
     const seed = this.opts.seed?.() ?? randomInt(2 ** 31 - 1);
     // One side for the whole table; a random side comes from the game's seed.

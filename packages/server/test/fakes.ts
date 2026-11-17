@@ -31,7 +31,7 @@ export class FakeConn implements Conn {
 
 export function makeRoom(opts: Partial<RoomOptions> = {}) {
   const clock = new ManualClock(1_000_000);
-  const room = new Room('WAND-42', { clientUrl: 'http://client', seed: () => 7, ...opts }, clock);
+  const room = new Room('WAND-42', { clientUrl: 'http://client', seed: () => 7, shuffle: (xs) => xs, ...opts }, clock);
   return { room, clock };
 }
 

@@ -8,7 +8,7 @@ const CONFIG: RoomConfig = { sideMode: 'random', turnTimerMs: null, seats: 4, pu
 
 function setup() {
   const clock = new ManualClock(1_000_000);
-  const mgr = new RoomManager({ clientUrl: 'http://client', seed: () => 7, roomsThrottleMs: 1000 }, clock);
+  const mgr = new RoomManager({ clientUrl: 'http://client', seed: () => 7, roomsThrottleMs: 1000, shuffle: (xs) => xs }, clock);
   const create = (name: string, settings: Partial<RoomConfig> = {}) => {
     const c = new FakeConn(name);
     mgr.onMessage(c, { t: 'createRoom', name, settings: { ...CONFIG, ...settings } });

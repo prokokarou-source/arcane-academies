@@ -15,12 +15,12 @@ const quickLobby = (startsAt: number | null): LobbyState => ({
   code: 'WAND-42',
   inviteUrl: 'http://x/?room=WAND-42',
   hostId: 's1',
-  settings: { graceMs: 60_000, turnTimerMs: null },
+  settings: { graceMs: 60_000, turnTimerMs: null }, config: { sideMode: 'random' as const, turnTimerMs: null, seats: 7, public: false, bots: 0, botLevel: 'normal' as const }, kind: 'room' as const, 
   quick: true,
   startsAt,
   seats: [
-    { id: 's1', kind: 'human', name: 'Ana', academyId: null, side: 'A', connected: true },
-    { id: 's2', kind: 'human', name: 'Bob', academyId: null, side: 'A', connected: true },
+    { id: 's1', kind: 'human', name: 'Ana', academyId: null, connected: true },
+    { id: 's2', kind: 'human', name: 'Bob', academyId: null, connected: true },
   ],
 });
 
@@ -29,44 +29,43 @@ describe('quick match client', () => {
     const h = harness();
     h.client.start();
     h.sock().open();
-    h.client.quickMatch('Ana', 3);
-    expect(h.sock().sent).toEqual([{ t: 'quickMatch', name: 'Ana', size: 3 }]);
-    h.sock().receive({ t: 'quickQueue', size: 3, searching: 2, waitedMs: 0 });
-    expect(h.client.getState().quick).toMatchObject({ size: 3, searching: 2 });
+    h.client.quickMatch('Ana', '3-5');
+    expect(h.sock().sent).toEqual([{ t: 'queueJoin', kind: 'casual', queue: '3-5', name: 'Ana' }]);
+    h.sock().receive({ t: 'queueState', kind: 'casual', queue: '3-5', searching: 2, waitedMs: 0 });
+    expect(h.client.getState().quick).toMatchObject({ size: '3-5', searching: 2 });
     h.sock().serverClose(1006);
     h.runTimers();
     h.sock().open();
-    expect(h.sock().sent).toEqual([{ t: 'quickMatch', name: 'Ana', size: 3 }]);
+    expect(h.sock().sent).toEqual([{ t: 'queueJoin', kind: 'casual', queue: '3-5', name: 'Ana' }]);
     h.sock().receive({ t: 'joined', code: 'WAND-42', seatId: 's1', token: 't' });
     expect(h.client.getState().quick).toBeNull();
   });
 
-  it('cancel stops the search; quickBots asks the server', () => {
+  it('cancel stops the search', () => {
     const h = harness();
     h.client.start();
     h.sock().open();
-    h.client.quickMatch('Ana', null);
-    h.client.quickBots();
+    h.client.quickMatch('Ana', '1v1');
     h.client.quickCancel();
-    expect(h.sock().sent.map((m) => m.t)).toEqual(['quickMatch', 'quickBots', 'quickCancel']);
+    expect(h.sock().sent.map((m) => m.t)).toEqual(['queueJoin', 'queueLeave']);
     expect(h.client.getState().quick).toBeNull();
     // A late queue update after cancelling is ignored.
-    h.sock().receive({ t: 'quickQueue', size: null, searching: 1, waitedMs: 0 });
+    h.sock().receive({ t: 'queueState', kind: 'casual', queue: '1v1', searching: 1, waitedMs: 0 });
     expect(h.client.getState().quick).toBeNull();
   });
 
   it('Home starts a search with the chosen size and shows the waiting screen', () => {
     const h = renderApp();
     typeName('Ana');
-    fireEvent.change(screen.getByLabelText('Players'), { target: { value: '2' } });
+    fireEvent.change(screen.getByLabelText('Players'), { target: { value: '1v1' } });
     fireEvent.click(screen.getByRole('button', { name: 'Quick match' }));
-    expect(h.sock().sent).toEqual([{ t: 'quickMatch', name: 'Ana', size: 2 }]);
-    act(() => h.sock().receive({ t: 'quickQueue', size: 2, searching: 3, waitedMs: 0 }));
+    expect(h.sock().sent).toEqual([{ t: 'queueJoin', kind: 'casual', queue: '1v1', name: 'Ana' }]);
+    act(() => h.sock().receive({ t: 'queueState', kind: 'casual', queue: '1v1', searching: 3, waitedMs: 0 }));
     expect(screen.getByText('Looking for players…')).toBeTruthy();
     expect(screen.getByText('Players searching: 3')).toBeTruthy();
     expect(screen.getByText('Waiting 0:00')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-    expect(h.sock().sent.at(-1)).toEqual({ t: 'quickCancel' });
+    expect(h.sock().sent.at(-1)).toEqual({ t: 'queueLeave' });
     expect(screen.getByRole('button', { name: 'Quick match' })).toBeTruthy();
   });
 
@@ -75,12 +74,10 @@ describe('quick match client', () => {
     const h = renderApp();
     typeName('Ana');
     fireEvent.click(screen.getByRole('button', { name: 'Quick match' }));
-    expect(h.sock().sent).toEqual([{ t: 'quickMatch', name: 'Ana', size: null }]);
+    expect(h.sock().sent).toEqual([{ t: 'queueJoin', kind: 'casual', queue: '3-5', name: 'Ana' }]);
     expect(screen.queryByRole('button', { name: 'Play with bots instead' })).toBeNull();
     act(() => vi.advanceTimersByTime(61_000));
     expect(screen.getByText('Waiting 1:01')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Play with bots instead' }));
-    expect(h.sock().sent.at(-1)).toEqual({ t: 'quickBots' });
     fireEvent.click(screen.getByRole('button', { name: 'Keep waiting' }));
     expect(screen.queryByRole('button', { name: 'Play with bots instead' })).toBeNull();
   });

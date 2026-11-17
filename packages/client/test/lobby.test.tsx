@@ -10,7 +10,6 @@ const seat = (id: string, name: string, extra: Partial<LobbySeat> = {}): LobbySe
   kind: 'human',
   name,
   academyId: null,
-  side: 'A',
   connected: true,
   ...extra,
 });
@@ -20,7 +19,7 @@ const lobbyOf = (seats: LobbySeat[], hostId = 's1'): LobbyState => ({
   inviteUrl: 'http://x/?room=WAND-42',
   hostId,
   seats,
-  settings: { graceMs: 60_000, turnTimerMs: null },
+  settings: { graceMs: 60_000, turnTimerMs: null }, config: { sideMode: 'random' as const, turnTimerMs: null, seats: 7, public: false, bots: 0, botLevel: 'normal' as const }, kind: 'room' as const, 
 });
 
 function inLobby(me: string, lobby: LobbyState) {
@@ -65,11 +64,8 @@ describe('Lobby', () => {
   it('picking an academy sends setSeat', () => {
     const h = inLobby('s2', lobbyOf([seat('s1', 'Ana'), seat('s2', 'Bob')]));
     fireEvent.change(screen.getByLabelText('Academy: Bob'), { target: { value: 'runeforge' } });
-    fireEvent.change(screen.getByLabelText('Side: Bob'), { target: { value: 'B' } });
-    expect(h.sock().sent).toEqual([
-      { t: 'setSeat', academyId: 'runeforge' },
-      { t: 'setSeat', side: 'B' },
-    ]);
+    expect(screen.queryByLabelText('Side: Bob')).toBeNull();
+    expect(h.sock().sent).toEqual([{ t: 'setSeat', academyId: 'runeforge' }]);
   });
 
   it('host edits a bot seat by id', () => {

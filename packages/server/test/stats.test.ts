@@ -69,6 +69,8 @@ describe('recording games in rooms', () => {
       won: end.result!.winners.includes(end.view.me),
       players: 4,
       playedAt: clock.now(),
+      kind: 'room',
+      side: end.view.players[end.view.me].side,
     });
     expect(r.won).toBe(r.place === 1);
     expect(guest.last('game')?.result).toBeDefined();

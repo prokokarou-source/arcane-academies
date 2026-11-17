@@ -38,21 +38,23 @@ describe('room lobby', () => {
     expect(JSON.stringify(a.last('lobby'))).toBe(before);
   });
 
-  it('lets players edit their own seat and the host edit bot seats', () => {
+  it('lets players edit their own seat and the host rename bots; bots get a random academy', () => {
     const { room, conns } = lobbyWith(['Ana', 'Bob']);
     const [a, b] = conns;
     room.handle(a, { t: 'addBot', level: 'easy' });
     const [sa, , bot] = a.last('lobby')!.lobby.seats;
     room.handle(b, { t: 'setSeat', seatId: sa.id, name: 'Hacker' });
     expect(b.lastError()).toBe('bad_seat');
-    room.handle(b, { t: 'setSeat', seatId: bot.id, side: 'B' });
+    room.handle(b, { t: 'setSeat', seatId: bot.id, name: 'Mine' });
     expect(b.lastError()).toBe('bad_seat');
-    room.handle(a, { t: 'setSeat', seatId: bot.id, side: 'B', academyId: 'runeforge' });
-    room.handle(b, { t: 'setSeat', name: 'Bobby', side: 'B' });
+    room.handle(a, { t: 'setSeat', seatId: bot.id, academyId: 'runeforge' });
+    expect(a.lastError()).toBe('bad_seat');
+    room.handle(a, { t: 'setSeat', seatId: bot.id, name: 'Robo' });
+    room.handle(b, { t: 'setSeat', name: 'Bobby', academyId: 'runeforge' });
     room.handle(a, { t: 'setBotLevel', seatId: bot.id, level: 'hard' });
     const seats = a.last('lobby')!.lobby.seats;
-    expect(seats[1]).toMatchObject({ name: 'Bobby', side: 'B' });
-    expect(seats[2]).toMatchObject({ side: 'B', academyId: 'runeforge', botLevel: 'hard', kind: 'bot', name: 'Bot 1' });
+    expect(seats[1]).toMatchObject({ name: 'Bobby', academyId: 'runeforge' });
+    expect(seats[2]).toMatchObject({ academyId: null, botLevel: 'hard', kind: 'bot', name: 'Robo' });
   });
 
   it('validates academy picks', () => {

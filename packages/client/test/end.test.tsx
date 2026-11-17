@@ -22,7 +22,7 @@ function play(me: string, hostId: string, msgs: GameMsg[]) {
     h.sock().receive({ t: 'joined', code: 'WAND-42', seatId: me, token: 't' });
     h.sock().receive({
       t: 'lobby',
-      lobby: { code: 'WAND-42', inviteUrl: 'x', hostId, seats: [], settings: { graceMs: 60_000, turnTimerMs: null } },
+      lobby: { code: 'WAND-42', inviteUrl: 'x', hostId, seats: [], settings: { graceMs: 60_000, turnTimerMs: null }, config: { sideMode: 'random' as const, turnTimerMs: null, seats: 7, public: false, bots: 0, botLevel: 'normal' as const }, kind: 'room' as const, },
     });
     for (const m of msgs) h.sock().receive(m);
   });

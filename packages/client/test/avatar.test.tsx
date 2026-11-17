@@ -48,11 +48,11 @@ describe('avatars next to names', () => {
       code: 'WAND-42',
       inviteUrl: 'x',
       hostId: 's1',
-      settings: { graceMs: 60_000, turnTimerMs: null },
+      settings: { graceMs: 60_000, turnTimerMs: null }, config: { sideMode: 'random' as const, turnTimerMs: null, seats: 7, public: false, bots: 0, botLevel: 'normal' as const }, kind: 'room' as const, 
       seats: [
-        { id: 's1', kind: 'human', name: 'Ana', academyId: null, side: 'A', connected: true, avatar: { icon: 'crown', color: 'violet' } },
-        { id: 's2', kind: 'human', name: 'Guest', academyId: null, side: 'A', connected: true },
-        { id: 's3', kind: 'bot', name: 'Bot 1', botLevel: 'easy', academyId: null, side: 'A', connected: true },
+        { id: 's1', kind: 'human', name: 'Ana', academyId: null, connected: true, avatar: { icon: 'crown', color: 'violet' } },
+        { id: 's2', kind: 'human', name: 'Guest', academyId: null, connected: true },
+        { id: 's3', kind: 'bot', name: 'Bot 1', botLevel: 'easy', academyId: null, connected: true },
       ],
     };
     act(() => {

@@ -1,4 +1,4 @@
-import type { Avatar, PushSub, ReportReason } from '@arcane/protocol';
+import type { Avatar, GameKind, PushSub, Queue, ReportReason, Side } from '@arcane/protocol';
 
 /**
  * Where accounts, login sessions and friendships live.
@@ -60,6 +60,11 @@ export interface GameRecord {
   players: number;
   /** Epoch ms. */
   playedAt: number;
+  /** What made the game (rooms-backend fills these; ranked-backend rates 'ranked'). */
+  kind?: GameKind;
+  queue?: Queue;
+  /** The side the whole table played. */
+  side?: Side;
 }
 
 export interface StatTotals {

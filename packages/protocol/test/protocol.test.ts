@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AVATAR_COLORS, AVATAR_ICONS, avatarKey, encode, isSocialMessage, parseAvatarKey, parseClientMessage, MAX_MESSAGE_BYTES, REACTIONS } from '../src/index';
+import { AVATAR_COLORS, AVATAR_ICONS, avatarKey, DEFAULT_ROOM_CONFIG, encode, isSocialMessage, parseAvatarKey, parseClientMessage, MAX_MESSAGE_BYTES, REACTIONS } from '../src/index';
 import type { ClientMessage, ServerMessage } from '../src/index';
 
 const plan = { buyLeft: { ink: 1 }, buyRight: {}, coinsToLeft: 2, coinsToRight: 0, coinsToBank: 0, free: false };
@@ -9,7 +9,7 @@ const samples: ClientMessage[] = [
   { t: 'join', code: 'WAND-42', name: 'Bob' },
   { t: 'rejoin', code: 'WAND-42', token: 'a'.repeat(32) },
   { t: 'leave' },
-  { t: 'setSeat', seatId: 's2', name: 'Cy', academyId: 'pyromancy', side: 'B' },
+  { t: 'setSeat', seatId: 's2', name: 'Cy', academyId: 'pyromancy' },
   { t: 'setSeat', academyId: null },
   { t: 'addBot', level: 'hard' },
   { t: 'removeSeat', seatId: 's3' },
@@ -37,7 +37,9 @@ describe('protocol', () => {
           inviteUrl: 'http://x/?room=WAND-42',
           hostId: 's1',
           settings: { graceMs: 60000, turnTimerMs: null },
-          seats: [{ id: 's1', kind: 'human', name: 'Ana', academyId: null, side: 'A', connected: true }],
+          config: DEFAULT_ROOM_CONFIG,
+          kind: 'room',
+          seats: [{ id: 's1', kind: 'human', name: 'Ana', academyId: null, connected: true }],
         },
       },
     ];
@@ -63,7 +65,7 @@ describe('protocol', () => {
       act({ type: 'build', cardUid: 'c' }),
       act({ type: 'steal', cardUid: 'c' }),
       JSON.stringify({ t: 'settings', settings: { graceMs: '60' } }),
-      JSON.stringify({ t: 'setSeat', side: 'C' }),
+      JSON.stringify({ t: 'setSeat', name: 7 }),
       JSON.stringify({ t: 'create', name: 'a'.repeat(MAX_MESSAGE_BYTES) }),
     ];
     for (const raw of bad) expect(parseClientMessage(raw), raw.slice(0, 80)).toBeNull();
@@ -103,30 +105,80 @@ describe('account messages', () => {
   });
 });
 
-describe('quick match messages', () => {
-  it('round-trip', () => {
+describe('queue messages', () => {
+  it('round-trip and are room messages', () => {
     const msgs: ClientMessage[] = [
-      { t: 'quickMatch', name: 'Ana', size: 3 },
-      { t: 'quickMatch', name: 'Ana', size: null },
-      { t: 'quickCancel' },
-      { t: 'quickBots' },
+      { t: 'queueJoin', kind: 'casual', queue: '1v1', name: 'Ana' },
+      { t: 'queueJoin', kind: 'ranked', queue: '6-7', name: 'Ana' },
+      { t: 'queueLeave' },
     ];
-    for (const m of msgs) expect(parseClientMessage(encode(m))).toEqual(m);
+    for (const m of msgs) {
+      expect(parseClientMessage(encode(m))).toEqual(m);
+      expect(isSocialMessage(m)).toBe(false);
+    }
     const server: ServerMessage[] = [
-      { t: 'quickQueue', size: null, searching: 2, waitedMs: 1500 },
-      { t: 'quickCancelled' },
+      { t: 'queueState', kind: 'ranked', queue: '3-5', searching: 2, waitedMs: 1500 },
+      { t: 'queueLeft' },
     ];
     for (const m of server) expect(JSON.parse(encode(m))).toEqual(m);
   });
 
-  it('rejects a bad size or name', () => {
-    const q = (v: object) => parseClientMessage(JSON.stringify({ t: 'quickMatch', ...v }));
-    expect(q({ name: 'Ana', size: 5 })).toBeNull();
-    expect(q({ name: 'Ana', size: 1 })).toBeNull();
-    expect(q({ name: 'Ana', size: '3' })).toBeNull();
-    expect(q({ name: 'Ana' })).toBeNull();
-    expect(q({ name: ' ', size: 2 })).toBeNull();
-    expect(q({ name: '  Ana ', size: 4 })).toEqual({ t: 'quickMatch', name: 'Ana', size: 4 });
+  it('rejects a bad kind, queue or name, and the old quick-match messages', () => {
+    const q = (v: object) => parseClientMessage(JSON.stringify({ t: 'queueJoin', ...v }));
+    expect(q({ kind: 'casual', queue: '2', name: 'Ana' })).toBeNull();
+    expect(q({ kind: 'bots', queue: '1v1', name: 'Ana' })).toBeNull();
+    expect(q({ queue: '1v1', name: 'Ana' })).toBeNull();
+    expect(q({ kind: 'casual', queue: '1v1', name: ' ' })).toBeNull();
+    expect(q({ kind: 'casual', queue: '1v1', name: '  Ana ', x: 1 })).toEqual({ t: 'queueJoin', kind: 'casual', queue: '1v1', name: 'Ana' });
+    for (const t of ['quickMatch', 'quickCancel', 'quickBots']) expect(parseClientMessage(JSON.stringify({ t, name: 'Ana', size: 2 }))).toBeNull();
+  });
+});
+
+describe('room messages', () => {
+  const config = { sideMode: 'B', turnTimerMs: 60000, seats: 5, public: true, bots: 2, botLevel: 'hard' } as const;
+
+  it('round-trip', () => {
+    const msgs: ClientMessage[] = [
+      { t: 'createRoom', name: 'Ana', settings: config },
+      { t: 'createRoom', name: 'Ana', settings: { ...config, sideMode: 'random', turnTimerMs: null } },
+      { t: 'joinRoom', code: 'WAND-42', name: 'Bob' },
+      { t: 'roomConfig', settings: { seats: 4 } },
+      { t: 'roomConfig', settings: config },
+      { t: 'roomConfig', settings: { turnTimerMs: null } },
+      { t: 'roomsWatch' },
+      { t: 'roomsUnwatch' },
+    ];
+    for (const m of msgs) expect(parseClientMessage(encode(m))).toEqual(m);
+    const server: ServerMessage[] = [
+      { t: 'rooms', rooms: [{ code: 'WAND-42', host: 'Ana', sideMode: 'random', turnTimerMs: null, seats: 4, taken: 2, bots: 1 }] },
+      {
+        t: 'game',
+        view: {} as never,
+        legal: [],
+        seats: [],
+        deadline: null,
+        reveal: { side: 'B', academies: [{ seat: 0, academyId: 'pyromancy' }] },
+      },
+    ];
+    for (const m of server) expect(JSON.parse(encode(m))).toEqual(m);
+  });
+
+  it('rejects malformed settings', () => {
+    const create = (settings: unknown) => parseClientMessage(JSON.stringify({ t: 'createRoom', name: 'Ana', settings }));
+    expect(create({ ...config, seats: undefined })).toBeNull();
+    expect(create({ ...config, sideMode: 'C' })).toBeNull();
+    expect(create({ ...config, seats: 2.5 })).toBeNull();
+    expect(create({ ...config, public: 'yes' })).toBeNull();
+    expect(create({ ...config, botLevel: 'insane' })).toBeNull();
+    expect(create({ ...config, turnTimerMs: '60' })).toBeNull();
+    expect(create(null)).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ t: 'roomConfig', settings: { bots: -0.5 } }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ t: 'roomConfig', settings: { seats: 3, extra: 1 } }))).toEqual({ t: 'roomConfig', settings: { seats: 3 } });
+    expect(parseClientMessage(JSON.stringify({ t: 'joinRoom', code: '', name: 'Bob' }))).toBeNull();
+  });
+
+  it('setSeat no longer carries a side', () => {
+    expect(parseClientMessage(JSON.stringify({ t: 'setSeat', academyId: 'pyromancy', side: 'B' }))).toEqual({ t: 'setSeat', academyId: 'pyromancy' });
   });
 });
 

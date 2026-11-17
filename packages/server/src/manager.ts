@@ -1,41 +1,52 @@
-import type { ClientMessage, QuickSize } from '@arcane/protocol';
+import type { ClientMessage, OpenRoom, Queue, QueueKind } from '@arcane/protocol';
 import type { Clock } from './clock';
 import { generateCode, normalizeCode } from './codes';
-import { Room, type Conn, type RoomOptions } from './room';
+import { checkConfig, Room, type Conn, type RoomOptions, type RoomSetup } from './room';
 
 export interface ManagerOptions extends RoomOptions {
   /** A room with no client message for this long is closed. */
   idleMs: number;
   /** How often idle and closed rooms are swept. */
   sweepMs: number;
-  /** Quick match: the lobby countdown before a matched game starts by itself. */
+  /** Queues: the lobby countdown before a matched game starts by itself. */
   quickStartMs: number;
-  /** Quick match: after this long, start with whoever compatible is waiting and fill the rest with bots. */
-  quickFillMs: number;
-  /** Quick match: true when the accounts on these two connections must not play together (one blocked the other). */
+  /** Queues 3-5 and 6-7: after this long, start with fewer players than a full table (at least the minimum). */
+  queueFillMs: Record<Exclude<Queue, '1v1'>, number>;
+  /** Public room list: at most one update per this many ms. */
+  roomsThrottleMs: number;
+  /** Queues: true when the accounts on these two connections must not play together (one blocked the other). */
   apart?(a: Conn, b: Conn): boolean;
 }
 
-/** A player in the quick-match queue. */
+/** How many humans each queue seats: a full table starts at once, `min` after the queue's fill time. */
+const QUEUE_SIZES: Record<Queue, { min: number; max: number }> = {
+  '1v1': { min: 2, max: 2 },
+  '3-5': { min: 3, max: 5 },
+  '6-7': { min: 6, max: 7 },
+};
+
+/** A player waiting in a Casual or Ranked queue. */
 interface Waiting {
   conn: Conn;
   name: string;
-  size: QuickSize;
+  kind: QueueKind;
+  queue: Queue;
   since: number;
+  account: string | null;
 }
-
-const ANY_SIZE = 4;
-const fits = (w: Waiting, n: number) => w.size === null || w.size === n;
 
 export const DEFAULT_MANAGER_OPTIONS: ManagerOptions = {
   clientUrl: 'http://localhost:5173',
   idleMs: 30 * 60_000,
   sweepMs: 60_000,
   quickStartMs: 10_000,
-  quickFillMs: 45_000,
+  queueFillMs: { '3-5': 45_000, '6-7': 60_000 },
+  roomsThrottleMs: 1_000,
 };
 
-/** Owns every room: creates them, routes client messages, expires idle ones. */
+const ENTERS_ROOM: readonly ClientMessage['t'][] = ['create', 'createRoom', 'join', 'joinRoom', 'rejoin'];
+
+/** Owns every room: creates them, runs the queues and the public room list, routes client messages, expires idle rooms. */
 export class RoomManager {
   private rooms = new Map<string, Room>();
   private connRoom = new Map<Conn, Room>();
@@ -43,6 +54,11 @@ export class RoomManager {
   private sweepTimer: unknown = null;
   private waiting: Waiting[] = [];
   private queueTimer: unknown = null;
+  /** Connections on the Rooms tab, and what they were last sent. */
+  private watchers = new Set<Conn>();
+  private roomsSent = '[]';
+  private roomsSentAt = -Infinity;
+  private roomsTimer: unknown = null;
 
   constructor(
     opts: Partial<ManagerOptions>,
@@ -66,43 +82,57 @@ export class RoomManager {
     return this.rooms.size;
   }
 
-  /** How many players are in the quick-match queue. */
+  /** How many players wait in all queues. */
   searching(): number {
     return this.waiting.length;
   }
 
+  /** Public rooms in their lobby with a free seat, oldest first. */
+  openRooms(): OpenRoom[] {
+    return [...this.rooms.values()].map((r) => r.openInfo()).filter((r): r is OpenRoom => r !== null);
+  }
+
   onMessage(conn: Conn, msg: ClientMessage): void {
-    // Creating or joining a room ends a quick-match search.
-    if (msg.t === 'create' || msg.t === 'join' || msg.t === 'rejoin') this.dequeue(conn);
+    // Creating or joining a room ends a queue search.
+    if (ENTERS_ROOM.includes(msg.t)) this.dequeue(conn);
     switch (msg.t) {
-      case 'quickMatch':
+      case 'queueJoin': {
+        const account = this.opts.accountOf?.(conn) ?? null;
+        if (msg.kind === 'ranked' && !account) return conn.send({ t: 'error', code: 'not_logged_in', message: 'Log in to play ranked' });
         this.detach(conn);
         this.waiting = this.waiting.filter((w) => w.conn !== conn);
-        this.waiting.push({ conn, name: msg.name, size: msg.size, since: this.clock.now() });
-        return this.queueChanged();
-      case 'quickCancel':
-        if (this.dequeue(conn)) conn.send({ t: 'quickCancelled' });
-        return;
-      case 'quickBots': {
-        const w = this.waiting.find((x) => x.conn === conn);
-        if (!w) return conn.send({ t: 'error', code: 'wrong_phase', message: 'You are not searching' });
-        this.waiting = this.waiting.filter((x) => x !== w);
-        this.seat([w], w.size ?? ANY_SIZE);
+        this.waiting.push({ conn, name: msg.name, kind: msg.kind, queue: msg.queue, since: this.clock.now(), account });
         return this.queueChanged();
       }
-      case 'create': {
+      case 'queueLeave':
+        if (this.dequeue(conn)) conn.send({ t: 'queueLeft' });
+        return;
+      case 'roomsWatch':
+        this.watchers.add(conn);
+        return conn.send({ t: 'rooms', rooms: this.openRooms() });
+      case 'roomsUnwatch':
+        this.watchers.delete(conn);
+        return;
+      case 'createRoom': {
+        const why = checkConfig(msg.settings, 1);
+        if (why) return conn.send({ t: 'error', code: 'bad_settings', message: why });
         this.detach(conn);
-        const code = generateCode((c) => this.rooms.has(c));
-        const room = new Room(code, this.opts, this.clock);
-        this.rooms.set(code, room);
+        const room = this.open({ kind: 'room', config: msg.settings });
+        return this.enter(conn, room, () => room.join(conn, msg.name));
+      }
+      case 'create': {
+        // Older clients: a private room with the server's defaults.
+        this.detach(conn);
+        const room = this.open({ kind: 'room' });
         return this.enter(conn, room, () => room.join(conn, msg.name));
       }
       case 'join':
+      case 'joinRoom':
       case 'rejoin': {
         const room = this.room(msg.code);
         if (!room || room.closed) return conn.send({ t: 'error', code: 'no_room', message: 'No room with that code' });
         if (this.connRoom.get(conn) !== room) this.detach(conn);
-        return this.enter(conn, room, () => (msg.t === 'join' ? room.join(conn, msg.name) : room.rejoin(conn, msg.token)));
+        return this.enter(conn, room, () => (msg.t === 'rejoin' ? room.rejoin(conn, msg.token) : room.join(conn, msg.name)));
       }
       default: {
         const room = this.connRoom.get(conn);
@@ -120,6 +150,7 @@ export class RoomManager {
 
   /** The transport lost this connection. */
   onClose(conn: Conn): void {
+    this.watchers.delete(conn);
     this.dequeue(conn);
     const room = this.connRoom.get(conn);
     this.connRoom.delete(conn);
@@ -137,19 +168,47 @@ export class RoomManager {
   }
 
   stop(): void {
-    if (this.sweepTimer !== null) this.clock.clearTimer(this.sweepTimer);
-    this.sweepTimer = null;
-    if (this.queueTimer !== null) this.clock.clearTimer(this.queueTimer);
-    this.queueTimer = null;
+    for (const t of [this.sweepTimer, this.queueTimer, this.roomsTimer]) if (t !== null) this.clock.clearTimer(t);
+    this.sweepTimer = this.queueTimer = this.roomsTimer = null;
     this.waiting = [];
+    this.watchers.clear();
     for (const room of this.rooms.values()) room.close('expired');
     this.rooms.clear();
     this.connRoom.clear();
   }
 
-  // ---------- quick match ----------
+  // ---------- rooms ----------
 
-  /** Take this conn out of the queue. True if it was waiting. */
+  private open(setup: Omit<RoomSetup, 'onChange'>): Room {
+    const code = generateCode((c) => this.rooms.has(c));
+    const room = new Room(code, this.opts, this.clock, { ...setup, onChange: () => this.roomsChanged() });
+    this.rooms.set(code, room);
+    return room;
+  }
+
+  /** Something a listed room shows may have changed: send the list to watchers, at most once per throttle period. */
+  private roomsChanged(): void {
+    if (this.watchers.size === 0 || this.roomsTimer !== null) return;
+    const wait = this.roomsSentAt + this.opts.roomsThrottleMs - this.clock.now();
+    if (wait <= 0) return this.sendRooms();
+    this.roomsTimer = this.clock.setTimer(wait, () => {
+      this.roomsTimer = null;
+      this.sendRooms();
+    });
+  }
+
+  private sendRooms(): void {
+    const rooms = this.openRooms();
+    const json = JSON.stringify(rooms);
+    if (json === this.roomsSent) return;
+    this.roomsSent = json;
+    this.roomsSentAt = this.clock.now();
+    for (const w of this.watchers) w.send({ t: 'rooms', rooms });
+  }
+
+  // ---------- queues ----------
+
+  /** Take this conn out of its queue. True if it was waiting. */
   private dequeue(conn: Conn): boolean {
     const before = this.waiting.length;
     this.waiting = this.waiting.filter((w) => w.conn !== conn);
@@ -158,15 +217,29 @@ export class RoomManager {
     return true;
   }
 
-  /** Match whoever can be matched, tell the rest how the search goes, and wake up for the next timeout. */
+  private pool(kind: QueueKind, queue: Queue): Waiting[] {
+    return this.waiting.filter((w) => w.kind === kind && w.queue === queue);
+  }
+
+  private fillMs(queue: Queue): number | null {
+    return queue === '1v1' ? null : this.opts.queueFillMs[queue];
+  }
+
+  /** Match whoever can be matched, tell the rest how the search goes, and wake up for the next fill time. */
   private queueChanged(): void {
-    this.matchFull();
-    this.matchOverdue();
     const now = this.clock.now();
-    for (const w of this.waiting) w.conn.send({ t: 'quickQueue', size: w.size, searching: this.waiting.length, waitedMs: now - w.since });
+    const pools = new Map<string, Waiting[]>();
+    for (const w of this.waiting) pools.set(`${w.kind}:${w.queue}`, this.pool(w.kind, w.queue));
+    for (const pool of pools.values()) this.match(pool);
+    let next = Infinity;
+    for (const w of this.waiting) {
+      const pool = this.pool(w.kind, w.queue);
+      w.conn.send({ t: 'queueState', kind: w.kind, queue: w.queue, searching: pool.length, waitedMs: now - w.since });
+      const fill = this.fillMs(w.queue);
+      if (fill !== null && pool.length >= QUEUE_SIZES[w.queue].min && w.since + fill > now) next = Math.min(next, w.since + fill);
+    }
     if (this.queueTimer !== null) this.clock.clearTimer(this.queueTimer);
     this.queueTimer = null;
-    const next = Math.min(...this.waiting.map((w) => w.since + this.opts.quickFillMs).filter((at) => at > now));
     if (Number.isFinite(next)) {
       this.queueTimer = this.clock.setTimer(next - now, () => {
         this.queueTimer = null;
@@ -175,54 +248,37 @@ export class RoomManager {
     }
   }
 
-  /** Full tables first, largest first. Players open to any size wait for a table of 4 (or the timeout). */
-  private matchFull(): void {
-    for (let found = true; found; ) {
-      found = false;
-      for (const n of [4, 3, 2]) {
-        const exact = this.waiting.filter((w) => w.size === n);
-        if (n !== ANY_SIZE && exact.length === 0) continue;
-        const group = this.pick([...exact, ...this.waiting.filter((w) => w.size === null)], n);
-        if (group.length < n) continue;
-        this.seat(group, n);
-        found = true;
-        break;
-      }
+  /** Full tables at once; after the fill time, the oldest player starts with whoever there is (at least the minimum). */
+  private match(pool: Waiting[]): void {
+    const { min, max } = QUEUE_SIZES[pool[0].queue];
+    const fill = this.fillMs(pool[0].queue);
+    let rest = pool;
+    while (rest.length >= min) {
+      const group = this.pick(rest, max);
+      const overdue = fill !== null && this.clock.now() - rest[0].since >= fill;
+      if (group.length < max && !(overdue && group.length >= min)) return;
+      this.seat(group);
+      rest = rest.filter((w) => !group.includes(w));
     }
   }
 
-  /** Whoever waited past the timeout starts with the compatible players there are; bots take the empty seats. */
-  private matchOverdue(): void {
-    const now = this.clock.now();
-    for (const old of [...this.waiting]) {
-      if (!this.waiting.includes(old) || now - old.since < this.opts.quickFillMs) continue;
-      const others = this.waiting.filter((w) => w !== old);
-      const sizes = old.size === null ? [4, 3, 2] : [old.size];
-      // The size most of the others accept (bigger tables win ties).
-      const n = sizes.reduce((best, s) => (others.filter((w) => fits(w, s)).length > others.filter((w) => fits(w, best)).length ? s : best));
-      const group = this.pick([old, ...others.filter((w) => w.size === n), ...others.filter((w) => w.size === null)], n);
-      if (group.length > 1) this.seat(group, n);
-    }
-  }
-
-  /** Up to `n` players in queue order, skipping anyone kept apart from a player already picked. */
+  /** Up to `n` players in queue order, skipping anyone kept apart from (or the same account as) a player already picked. */
   private pick(candidates: Waiting[], n: number): Waiting[] {
     const group: Waiting[] = [];
     for (const w of candidates) {
       if (group.length >= n) break;
-      if (!group.some((g) => this.opts.apart?.(g.conn, w.conn))) group.push(w);
+      const clash = group.some((g) => (g.account !== null && g.account === w.account) || this.opts.apart?.(g.conn, w.conn));
+      if (!clash) group.push(w);
     }
     return group;
   }
 
-  /** Open a quick room for these players; its lobby counts down and then starts with bots in the empty seats. */
-  private seat(group: Waiting[], size: number): void {
+  /** Open a queue room for these players; its lobby counts down and then starts with exactly them. */
+  private seat(group: Waiting[]): void {
     this.waiting = this.waiting.filter((w) => !group.includes(w));
-    const code = generateCode((c) => this.rooms.has(c));
-    const room = new Room(code, this.opts, this.clock);
-    this.rooms.set(code, room);
+    const room = this.open({ kind: group[0].kind, queue: group[0].queue });
     for (const w of group) this.enter(w.conn, room, () => room.join(w.conn, w.name));
-    room.startCountdown(this.opts.quickStartMs, size);
+    room.startCountdown(this.opts.quickStartMs);
   }
 
   private enter(conn: Conn, room: Room, fn: () => void): void {

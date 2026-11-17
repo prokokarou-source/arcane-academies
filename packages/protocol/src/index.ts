@@ -54,13 +54,62 @@ export function parseAvatarKey(s: string | null | undefined): Avatar | null {
   return isAvatar(a) ? a : null;
 }
 
+// ---------- menu: queues and rooms (contract sections Q and R) ----------
+
+/** One side for the whole table: every seat plays side A, or every seat side B. */
+export type Side = 'A' | 'B';
+/** The host's choice for the table; 'random' is drawn at game start. */
+export type SideMode = Side | 'random';
+export const SIDE_MODES: readonly SideMode[] = ['A', 'B', 'random'];
+/** Casual / Ranked tables: 1v1 = 2 humans + the Rival Archmage. */
+export type Queue = '1v1' | '3-5' | '6-7';
+export const QUEUES: readonly Queue[] = ['1v1', '3-5', '6-7'];
+export type QueueKind = 'casual' | 'ranked';
+/** 'bots' = solo in the browser, 'room' = host-made room. */
+export type GameKind = 'bots' | 'casual' | 'ranked' | 'room';
+
+/** A host-made room's setup, chosen before the lobby and changeable there. */
+export interface RoomConfig {
+  sideMode: SideMode;
+  turnTimerMs: number | null;
+  /** Total seats, humans and bots: 2..7. */
+  seats: number;
+  /** Listed in Open Rooms (else code / invite only). */
+  public: boolean;
+  /** Bot seats, 0..seats-1. */
+  bots: number;
+  /** One level for every bot. */
+  botLevel: BotLevel;
+}
+
+export const ROOM_SEATS = [2, 7] as const;
+export const DEFAULT_ROOM_CONFIG: RoomConfig = { sideMode: 'random', turnTimerMs: null, seats: 7, public: false, bots: 0, botLevel: 'normal' };
+
+/** A public room in its lobby with a free human seat. */
+export interface OpenRoom {
+  code: string;
+  /** The host's name. */
+  host: string;
+  sideMode: SideMode;
+  turnTimerMs: number | null;
+  seats: number;
+  /** Seats filled (humans and bots). */
+  taken: number;
+  bots: number;
+}
+
+/** Sent once per game, with its first `game` message: the drawn side and academies, for the reveal animation. */
+export interface GameReveal {
+  side: Side;
+  academies: { seat: number; academyId: string }[];
+}
+
 export interface LobbySeat {
   id: SeatId;
   kind: 'human' | 'bot';
   name: string;
   botLevel?: BotLevel;
   academyId: string | null;
-  side: 'A' | 'B';
   connected: boolean;
   /** The account playing this seat, when its player is logged in. */
   username?: string;
@@ -74,15 +123,16 @@ export interface LobbyState {
   hostId: SeatId;
   seats: LobbySeat[];
   settings: RoomSettings;
-  /** Quick-match rooms: the game starts by itself at this server time (epoch ms); empty seats get bots. */
+  /** The room's setup (queue rooms: what the queue decided). */
+  config: RoomConfig;
+  /** What made this room: a Casual/Ranked queue or a host. */
+  kind: 'casual' | 'ranked' | 'room';
+  queue?: Queue;
+  /** Queue rooms: the game starts by itself at this server time (epoch ms). */
   startsAt?: number | null;
-  /** Made by quick match: strangers, so nobody can remove anybody. */
+  /** Made by a queue: strangers, so nobody can remove anybody and academies are drawn. */
   quick?: boolean;
 }
-
-/** Quick match: wanted table size (players incl. bots), or null for any. */
-export type QuickSize = 2 | 3 | 4 | null;
-export const QUICK_SIZES: readonly Exclude<QuickSize, null>[] = [2, 3, 4];
 
 /** Presence of an engine seat during a game. */
 export interface SeatStatus {
@@ -245,11 +295,23 @@ export const REACTION_REFILL_MS = 2_000;
 
 export type ClientMessage =
   | SocialMessage
+  /** A private room with the default setup (older clients); prefer createRoom. */
   | { t: 'create'; name: string }
+  | { t: 'createRoom'; name: string; settings: RoomConfig }
+  /** `join` is the older name of joinRoom. */
   | { t: 'join'; code: string; name: string }
+  | { t: 'joinRoom'; code: string; name: string }
+  /** Host in the lobby: change the room's setup. */
+  | { t: 'roomConfig'; settings: Partial<RoomConfig> }
+  /** Get the public room list now and on every change, until roomsUnwatch. */
+  | { t: 'roomsWatch' }
+  | { t: 'roomsUnwatch' }
+  /** Search a Casual or Ranked table (leaves any room first). Ranked needs a login. */
+  | { t: 'queueJoin'; kind: QueueKind; queue: Queue; name: string }
+  | { t: 'queueLeave' }
   | { t: 'rejoin'; code: string; token: string }
   | { t: 'leave' }
-  | { t: 'setSeat'; seatId?: SeatId; name?: string; academyId?: string | null; side?: 'A' | 'B' }
+  | { t: 'setSeat'; seatId?: SeatId; name?: string; academyId?: string | null }
   | { t: 'addBot'; level: BotLevel }
   | { t: 'removeSeat'; seatId: SeatId }
   | { t: 'setBotLevel'; seatId: SeatId; level: BotLevel }
@@ -262,11 +324,6 @@ export type ClientMessage =
   | { t: 'playAgain'; ready: boolean }
   /** After the game, host only: start the next game now with whoever is ready. */
   | { t: 'playAgainNow' }
-  /** Search for strangers to play with (leaves any room first). */
-  | { t: 'quickMatch'; name: string; size: QuickSize }
-  | { t: 'quickCancel' }
-  /** Stop searching and play right away against Normal bots. */
-  | { t: 'quickBots' }
   | { t: 'react'; reaction: ReactionId };
 
 export type ErrorCode =
@@ -329,7 +386,7 @@ export interface GameResult {
 export type ServerMessage =
   | { t: 'joined'; code: string; seatId: SeatId; token: string }
   | { t: 'lobby'; lobby: LobbyState }
-  | { t: 'game'; view: PlayerView; legal: Action[]; seats: SeatStatus[]; deadline: number | null; result?: GameResult }
+  | { t: 'game'; view: PlayerView; legal: Action[]; seats: SeatStatus[]; deadline: number | null; result?: GameResult; reveal?: GameReveal }
   | { t: 'error'; code: ErrorCode; message: string }
   | { t: 'closed'; reason: CloseReason }
   /** Someone in the room reacted. `seat` is their engine seat during a game, else null. */
@@ -341,10 +398,12 @@ export type ServerMessage =
   | { t: 'presence'; username: string; online: boolean }
   /** A friend invites me to their room. */
   | { t: 'invite'; from: string; code: string }
-  /** I am in the quick-match queue: `searching` players are waiting in total (me included). */
-  | { t: 'quickQueue'; size: QuickSize; searching: number; waitedMs: number }
-  /** I left the queue without a match (cancelled). */
-  | { t: 'quickCancelled' }
+  /** I am in a queue: `searching` players wait in it (me included). Sent on every change. */
+  | { t: 'queueState'; kind: QueueKind; queue: Queue; searching: number; waitedMs: number }
+  /** I left the queue without a match. */
+  | { t: 'queueLeft' }
+  /** Open public rooms (on roomsWatch and on every change, at most about once a second). */
+  | { t: 'rooms'; rooms: OpenRoom[] }
   | { t: 'profile'; profile: Profile }
   | { t: 'leaderboard'; rows: LeaderRow[] }
   | { t: 'passwordChanged' }
@@ -369,6 +428,39 @@ const isStr = (v: unknown, max = 64): v is string => typeof v === 'string' && v.
 const isCount = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= 1000;
 const LEVELS: readonly string[] = ['easy', 'normal', 'hard'];
 const isLevel = (v: unknown): v is BotLevel => typeof v === 'string' && LEVELS.includes(v);
+const isQueue = (v: unknown): v is Queue => (QUEUES as readonly unknown[]).includes(v);
+const isInt = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v);
+
+/** Shape only; the server checks ranges against the room (seats vs players already in it). */
+function roomConfig(v: unknown): Partial<RoomConfig> | null {
+  if (!isObj(v)) return null;
+  const out: Partial<RoomConfig> = {};
+  if (v.sideMode !== undefined) {
+    if (!(SIDE_MODES as readonly unknown[]).includes(v.sideMode)) return null;
+    out.sideMode = v.sideMode as SideMode;
+  }
+  if (v.turnTimerMs !== undefined) {
+    if (v.turnTimerMs !== null && !isInt(v.turnTimerMs)) return null;
+    out.turnTimerMs = v.turnTimerMs;
+  }
+  for (const k of ['seats', 'bots'] as const) {
+    if (v[k] === undefined) continue;
+    if (!isInt(v[k])) return null;
+    out[k] = v[k] as number;
+  }
+  if (v.public !== undefined) {
+    if (typeof v.public !== 'boolean') return null;
+    out.public = v.public;
+  }
+  if (v.botLevel !== undefined) {
+    if (!isLevel(v.botLevel)) return null;
+    out.botLevel = v.botLevel;
+  }
+  return out;
+}
+
+const fullConfig = (c: Partial<RoomConfig>): c is RoomConfig =>
+  c.sideMode !== undefined && c.turnTimerMs !== undefined && c.seats !== undefined && c.public !== undefined && c.bots !== undefined && c.botLevel !== undefined;
 
 function name(v: unknown): string | null {
   if (typeof v !== 'string') return null;
@@ -491,23 +583,34 @@ function parseObj(m: Obj): ClientMessage | null {
       const n = name(m.name);
       return n ? { t: 'create', name: n } : null;
     }
-    case 'join': {
+    case 'join':
+    case 'joinRoom': {
       const n = name(m.name);
-      return n && isStr(m.code, 16) ? { t: 'join', code: m.code, name: n } : null;
+      return n && isStr(m.code, 16) ? { t: m.t, code: m.code, name: n } : null;
+    }
+    case 'createRoom': {
+      const n = name(m.name);
+      const c = roomConfig(m.settings);
+      return n && c && fullConfig(c) ? { t: 'createRoom', name: n, settings: c } : null;
+    }
+    case 'roomConfig': {
+      const c = roomConfig(m.settings);
+      return c ? { t: 'roomConfig', settings: c } : null;
+    }
+    case 'queueJoin': {
+      const n = name(m.name);
+      const ok = n && (m.kind === 'casual' || m.kind === 'ranked') && isQueue(m.queue);
+      return ok ? { t: 'queueJoin', kind: m.kind as QueueKind, queue: m.queue as Queue, name: n } : null;
     }
     case 'rejoin':
       return isStr(m.code, 16) && isStr(m.token, 128) ? { t: 'rejoin', code: m.code, token: m.token } : null;
     case 'leave':
     case 'start':
     case 'rematch':
-    case 'quickCancel':
-    case 'quickBots':
+    case 'queueLeave':
+    case 'roomsWatch':
+    case 'roomsUnwatch':
       return { t: m.t };
-    case 'quickMatch': {
-      const n = name(m.name);
-      const size = m.size === null || (QUICK_SIZES as readonly unknown[]).includes(m.size) ? (m.size as QuickSize) : undefined;
-      return n && size !== undefined ? { t: 'quickMatch', name: n, size } : null;
-    }
     case 'setSeat': {
       const out: Extract<ClientMessage, { t: 'setSeat' }> = { t: 'setSeat' };
       if (m.seatId !== undefined) {
@@ -522,10 +625,6 @@ function parseObj(m: Obj): ClientMessage | null {
       if (m.academyId !== undefined) {
         if (m.academyId !== null && !isStr(m.academyId)) return null;
         out.academyId = m.academyId;
-      }
-      if (m.side !== undefined) {
-        if (m.side !== 'A' && m.side !== 'B') return null;
-        out.side = m.side;
       }
       return out;
     }

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ACADEMIES, type BotLevel } from '@arcane/engine';
-import { MAX_NAME, QUICK_SIZES, type QuickSize } from '@arcane/protocol';
+import { MAX_NAME, QUEUES, type Queue } from '@arcane/protocol';
 import { useSound } from '../audio/context';
 import { useInstall } from '../pwa/context';
 import { useClient, useClientState, usePrefs, useT } from './context';
@@ -17,7 +17,7 @@ export function Home(props: { initialRoom?: string; onRules(): void; onSettings(
   const [code, setCode] = useState((props.initialRoom ?? '').toUpperCase());
   const [bots, setBots] = useState(3);
   const [level, setLevel] = useState<BotLevel>('normal');
-  const [quickSize, setQuickSize] = useState<QuickSize>(null);
+  const [quickSize, setQuickSize] = useState<Queue>('3-5');
   const online = friends?.friends.filter((f) => f.online).length ?? 0;
   const requests = friends?.incoming.length ?? 0;
   const install = useInstall();
@@ -72,11 +72,10 @@ export function Home(props: { initialRoom?: string; onRules(): void; onSettings(
             <span>{t('quickSize')}</span>
             <select
               aria-label={t('quickSize')}
-              value={quickSize ?? 'any'}
-              onChange={(e) => setQuickSize(e.target.value === 'any' ? null : (Number(e.target.value) as QuickSize))}
+              value={quickSize}
+              onChange={(e) => setQuickSize(e.target.value as Queue)}
             >
-              <option value="any">{t('quickAny')}</option>
-              {QUICK_SIZES.map((n) => (
+              {QUEUES.map((n) => (
                 <option key={n} value={n}>
                   {n}
                 </option>

@@ -22,8 +22,8 @@ describe('RoomManager', () => {
     const b = new FakeConn();
     mgr.onMessage(b, { t: 'join', code: ` ${code.toLowerCase()} `, name: 'Bob' });
     expect(b.last('lobby')!.lobby.seats).toHaveLength(2);
-    mgr.onMessage(b, { t: 'setSeat', side: 'B' });
-    expect(a.last('lobby')!.lobby.seats[1].side).toBe('B');
+    mgr.onMessage(b, { t: 'setSeat', academyId: 'pyromancy' });
+    expect(a.last('lobby')!.lobby.seats[1].academyId).toBe('pyromancy');
   });
 
   it('reports unknown rooms and conns outside a room', () => {
@@ -72,7 +72,7 @@ describe('RoomManager', () => {
     mgr.onMessage(b, { t: 'create', name: 'Bob' });
     for (let i = 0; i < 6; i++) {
       clock.advance(10 * MIN);
-      mgr.onMessage(b, { t: 'setSeat', side: i % 2 ? 'A' : 'B' });
+      mgr.onMessage(b, { t: 'setSeat', name: i % 2 ? 'Bob' : 'Bobby' });
     }
     expect(a.closedWith).toBe('expired');
     expect(b.closedWith).toBeNull();

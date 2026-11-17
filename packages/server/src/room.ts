@@ -162,6 +162,8 @@ interface Member {
   /** Left the game on purpose (not just disconnected); a bot keeps playing the seat. */
   left?: boolean;
   engineSeat: number;
+  /** A bot the room added on Start to fill an empty seat; it goes again when the table returns to the lobby. */
+  filler?: boolean;
   /** Reaction rate limit: tokens left and when they were last counted. */
   reactTokens?: number;
   reactAt?: number;
@@ -213,6 +215,8 @@ export class Room {
   /** AI opponents thinking this turn: engine seat -> timer (kept after it fires so the turn is not thought twice). */
   private aiTimers = new Map<number, unknown>();
   private aiTurn = -1;
+  /** Host rooms made with explicit settings fill their empty seats with bots on Start (older clients' rooms do not). */
+  private readonly fillOnStart: boolean;
 
   constructor(
     readonly code: string,
@@ -224,6 +228,7 @@ export class Room {
     this.config = { ...DEFAULT_ROOM_CONFIG, turnTimerMs: this.settings.turnTimerMs, ...setup.config };
     this.settings.turnTimerMs = this.config.turnTimerMs;
     this.lastActivity = clock.now();
+    this.fillOnStart = setup.kind === 'room' && !!setup.config;
     for (let i = 0; i < this.config.bots; i++) this.pushBot(this.config.botLevel);
   }
 
@@ -575,6 +580,13 @@ export class Room {
   }
 
   private start(host: Member): void {
+    // Empty seats are filled with bots at the room's bot level.
+    if (this.fillOnStart) {
+      while (this.members.length < Math.min(this.config.seats, MAX_SEATS)) {
+        this.pushBot(this.config.botLevel);
+        this.members[this.members.length - 1].filler = true;
+      }
+    }
     const n = this.members.length;
     if (n < 2 || n > MAX_SEATS) return this.fail(host.conn!, 'seat_count', 'A game needs 2 to 7 seats');
     this.begin();
@@ -630,7 +642,9 @@ export class Room {
       x.left = false;
       x.engineSeat = -1;
       x.ready = false;
-      if (x.kind === 'human' && !x.conn) {
+      // Seats filled on Start are free again.
+      if (x.filler) this.members = this.members.filter((y) => y !== x);
+      else if (x.kind === 'human' && !x.conn) {
         this.clearGrace(x);
         this.passHost(x);
         this.members = this.members.filter((y) => y !== x);

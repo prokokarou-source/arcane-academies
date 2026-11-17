@@ -118,7 +118,7 @@ export function Game({ onSettings, onRules }: { onSettings(): void; onRules(): v
   );
 
   return (
-    <main className={`screen game${wide ? ' game-desk' : ''}`}>
+    <main className={`screen game${wide ? ' game-desk' : ''}${view.phase === 'ended' ? ' ended' : ''}`}>
       <header className="game-head">
         <span>{t('term', { n: ROMAN[view.term - 1] })}</span>
         <span>{t('turn', { n: view.turn })}</span>

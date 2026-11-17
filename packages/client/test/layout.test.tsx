@@ -96,4 +96,29 @@ describe('laptop layout', () => {
     expect(document.querySelector('.table-btn')).toBeNull();
     expect(screen.getAllByTestId('card')).toHaveLength(7);
   });
+  it('the room lobby keeps the sidebar (Rooms) and friends rail; tabs wait until I leave', () => {
+    fakeWindow(1280);
+    const h = renderApp();
+    act(() => {
+      h.sock().receive({ t: 'joined', code: 'OWLS-30', seatId: 's1', token: 't' });
+      h.sock().receive({
+        t: 'lobby',
+        lobby: {
+          code: 'OWLS-30',
+          inviteUrl: 'http://x/?room=OWLS-30',
+          hostId: 's1',
+          seats: [{ id: 's1', kind: 'human', name: 'Ana', academyId: null, connected: true }],
+          settings: { graceMs: 60_000, turnTimerMs: null },
+          config: { sideMode: 'random', turnTimerMs: null, seats: 4, public: false, bots: 0, botLevel: 'normal' },
+          kind: 'room',
+        },
+      });
+    });
+    expect(document.querySelector('.desk .room-lobby')).toBeTruthy();
+    expect(within(nav()).getByRole('button', { name: 'Rooms' }).getAttribute('aria-current')).toBe('page');
+    expect(within(nav()).getByRole('button', { name: 'Play' })).toHaveProperty('disabled', true);
+    expect(screen.getByRole('complementary', { name: 'Friends online' })).toBeTruthy();
+    // On a laptop the settings card is always open (no collapsible).
+    expect(screen.getByRole('region', { name: 'Room settings' }).tagName).toBe('SECTION');
+  });
 });

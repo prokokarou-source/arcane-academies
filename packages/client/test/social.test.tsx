@@ -144,7 +144,8 @@ describe('account screens', () => {
       h.sock().receive({ t: 'joined', code: 'WAND-42', seatId: 's1', token: 't' });
       h.sock().receive({ t: 'lobby', lobby });
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Invite friends' }));
+    // A free seat's Invite opens my friends.
+    fireEvent.click(screen.getAllByRole('button', { name: 'Invite' })[0]);
     const invites = screen.getAllByRole('button', { name: 'Invite' });
     // Offline friends can be invited too: the server pushes a notification or answers friend_offline.
     expect(invites).toHaveLength(2);
@@ -155,13 +156,15 @@ describe('account screens', () => {
     expect(h.sock().sent).toContainEqual({ t: 'invite', username: 'Cyd' });
   });
 
-  it('a guest lobby has no invite button', () => {
+  it('a guest has no friends to invite: Invite shares the room link instead', () => {
     const h = renderApp();
     act(() => {
       h.sock().receive({ t: 'joined', code: 'WAND-42', seatId: 's1', token: 't' });
       h.sock().receive({ t: 'lobby', lobby });
     });
-    expect(screen.queryByRole('button', { name: 'Invite friends' })).toBeNull();
+    fireEvent.click(screen.getAllByRole('button', { name: 'Invite' })[0]);
+    expect(screen.getByText('WAND-42')).toBeTruthy();
+    expect(h.sock().sent.filter((m) => m.t === 'invite')).toEqual([]);
   });
 
   it('an incoming invite shows a banner whose Join enters the room', () => {

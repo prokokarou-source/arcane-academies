@@ -155,7 +155,7 @@ const clock = (ms: number) => {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 };
 
-/** Waiting in a Casual or Ranked queue: elapsed time, who else is searching, cancel. */
+/** Waiting in a Casual or Ranked queue: elapsed time and cancel (how many others search is not shown). */
 export function QueueWait(props: { playName(): string }) {
   const client = useClient();
   const { queue } = useClientState();
@@ -182,7 +182,6 @@ export function QueueWait(props: { playName(): string }) {
         {t('quickSearching')}
       </p>
       <p className="quick-time">{t('quickWaited', { time: clock(waited) })}</p>
-      {queue.searching > 0 && <p className="muted">{t('quickCount', { n: queue.searching })}</p>}
       {waited >= ALONE_MS && !keepWaiting && (
         <section className="panel">
           <p className="muted">{t('quickAlone')}</p>

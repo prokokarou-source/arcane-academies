@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { LobbySeat, LobbyState } from '@arcane/protocol';
 import { renderApp } from './render';
@@ -19,7 +19,9 @@ const lobbyOf = (seats: LobbySeat[], hostId = 's1'): LobbyState => ({
   inviteUrl: 'http://x/?room=WAND-42',
   hostId,
   seats,
-  settings: { graceMs: 60_000, turnTimerMs: null }, config: { sideMode: 'random' as const, turnTimerMs: null, seats: 7, public: false, bots: seats.filter((x) => x.kind === 'bot').length, botLevel: 'normal' as const }, kind: 'room' as const, 
+  settings: { graceMs: 60_000, turnTimerMs: null },
+  config: { sideMode: 'random' as const, turnTimerMs: null, seats: 7, public: false, bots: seats.filter((x) => x.kind === 'bot').length, botLevel: 'normal' as const },
+  kind: 'room' as const,
 });
 
 function inLobby(me: string, lobby: LobbyState) {
@@ -33,68 +35,97 @@ function inLobby(me: string, lobby: LobbyState) {
 }
 
 describe('Lobby', () => {
-  it('shows code and seats', () => {
+  it('shows the code, the seats and no LAN hint', () => {
     inLobby('s1', lobbyOf([seat('s1', 'Ana'), seat('b1', 'Bot Ivy', { kind: 'bot', botLevel: 'hard' })]));
     expect(screen.getByText('WAND-42')).toBeTruthy();
     expect(screen.getByText('Ana')).toBeTruthy();
     expect(screen.getByText('Bot Ivy')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Copy code' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Share link' })).toBeTruthy();
+    expect(screen.queryByText(/same Wi-Fi/)).toBeNull();
+    expect(screen.getByText('Players 2/7')).toBeTruthy();
   });
 
-  it('host sees the room config, changes it and starts', () => {
+  it('host changes the room settings (no Bots count there) and starts', () => {
     const lobby = { ...lobbyOf([seat('s1', 'Ana'), seat('s2', 'Bob')]), config: { sideMode: 'B', turnTimerMs: 60_000, seats: 4, public: true, bots: 0, botLevel: 'normal' } } as LobbyState;
     const h = inLobby('s1', lobby);
-    expect(screen.getByLabelText('Room settings').textContent).toBe('Side: Side B · Turn timer: 1 min · 4 seats · Public');
     expect(screen.getAllByText('Free seat')).toHaveLength(2);
+    expect(screen.queryByRole('group', { name: 'Bots' })).toBeNull();
+    expect(screen.getByText('Empty seats are filled with bots when you start.')).toBeTruthy();
     fireEvent.click(screen.getByRole('radio', { name: 'Random' }));
-    fireEvent.click(screen.getByRole('button', { name: 'More Bots' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'Hard' }));
     fireEvent.click(screen.getByRole('radio', { name: 'Private' }));
     fireEvent.click(screen.getByRole('button', { name: 'Start game' }));
     expect(h.sock().sent).toEqual([
       { t: 'roomConfig', settings: { sideMode: 'random' } },
-      { t: 'roomConfig', settings: { bots: 1 } },
+      { t: 'roomConfig', settings: { botLevel: 'hard' } },
       { t: 'roomConfig', settings: { public: false } },
       { t: 'start' },
     ]);
   });
 
-  it('start is disabled with one seat', () => {
-    inLobby('s1', lobbyOf([seat('s1', 'Ana')]));
-    expect(screen.getByRole('button', { name: 'Start game' })).toHaveProperty('disabled', true);
+  it('every free seat has + Bot (at the room bot level) and Invite', () => {
+    const lobby = { ...lobbyOf([seat('s1', 'Ana')]), config: { sideMode: 'random', turnTimerMs: null, seats: 3, public: false, bots: 0, botLevel: 'easy' } } as LobbyState;
+    const h = inLobby('s1', lobby);
+    const plus = screen.getAllByRole('button', { name: '+ Bot' });
+    expect(plus).toHaveLength(2);
+    expect(screen.getAllByRole('button', { name: 'Invite' })).toHaveLength(2);
+    fireEvent.click(plus[0]);
+    expect(h.sock().sent).toEqual([{ t: 'addBot', level: 'easy' }]);
   });
 
-  it('non-host sees no host controls', () => {
+  it('start works with one player: empty seats get bots', () => {
+    const h = inLobby('s1', lobbyOf([seat('s1', 'Ana')]));
+    const start = screen.getByRole('button', { name: 'Start game' });
+    expect(start).toHaveProperty('disabled', false);
+    fireEvent.click(start);
+    expect(h.sock().sent).toEqual([{ t: 'start' }]);
+  });
+
+  it('non-host sees the settings read-only and no host controls', () => {
     inLobby('s2', lobbyOf([seat('s1', 'Ana'), seat('s2', 'Bob')]));
     expect(screen.queryByRole('button', { name: 'Start game' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Add bot' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '+ Bot' })).toBeNull();
+    expect(screen.getAllByRole('button', { name: 'Invite' }).length).toBeGreaterThan(0);
+    expect(screen.queryByLabelText('Turn timer')).toBeNull();
+    expect(screen.getByText('Bot takes over after')).toBeTruthy();
     expect(screen.getByText('Waiting for the host to start…')).toBeTruthy();
-    expect(screen.queryByLabelText('Academy: Ana')).toBeNull();
+    // Only my own academy chip opens the picker.
+    expect(screen.queryByRole('button', { name: 'Academy: Ana' })).toBeNull();
   });
 
-  it('picking an academy sends setSeat', () => {
-    const h = inLobby('s2', lobbyOf([seat('s1', 'Ana'), seat('s2', 'Bob')]));
-    fireEvent.change(screen.getByLabelText('Academy: Bob'), { target: { value: 'runeforge' } });
-    // No side pick: one side for the whole table.
-    expect(screen.queryByLabelText('Side: Bob')).toBeNull();
-    expect(h.sock().sent).toEqual([{ t: 'setSeat', academyId: 'runeforge' }]);
-  });
-
-  it('bots are set by count and one level; only humans can be removed', () => {
-    const h = inLobby('s1', lobbyOf([seat('s1', 'Ana'), seat('s2', 'Bob'), seat('b1', 'Bot Ivy', { kind: 'bot', botLevel: 'normal' })]));
-    expect(screen.queryByLabelText('Academy: Bot Ivy')).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Remove Bot Ivy' })).toBeNull();
-    fireEvent.click(screen.getByRole('radio', { name: 'Hard' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Remove Bob' }));
+  it('my academy chip opens a picker; picking sends setSeat, Random sends null', () => {
+    const h = inLobby('s2', lobbyOf([seat('s1', 'Ana'), seat('s2', 'Bob', { academyId: 'verdant' })]));
+    fireEvent.click(screen.getByRole('button', { name: 'Academy: Bob' }));
+    const picker = screen.getByRole('dialog', { name: 'Choose academy' });
+    fireEvent.click(within(picker).getByRole('button', { name: /Runeforge/ }));
+    expect(screen.queryByRole('dialog', { name: 'Choose academy' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Academy: Bob' }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: /Random/ }));
     expect(h.sock().sent).toEqual([
-      { t: 'roomConfig', settings: { botLevel: 'hard' } },
-      { t: 'removeSeat', seatId: 's2' },
+      { t: 'setSeat', academyId: 'runeforge' },
+      { t: 'setSeat', academyId: null },
     ]);
   });
 
-  it('academy taken by another seat is disabled', () => {
+  it('an academy another player picked is greyed "taken"', () => {
     inLobby('s2', lobbyOf([seat('s1', 'Ana', { academyId: 'pyromancy' }), seat('s2', 'Bob')]));
-    const select = screen.getByLabelText('Academy: Bob') as HTMLSelectElement;
-    const opt = [...select.options].find((o) => o.value === 'pyromancy')!;
-    expect(opt.disabled).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Academy: Bob' }));
+    const taken = within(screen.getByRole('dialog')).getByRole('button', { name: /Pyromancy/ });
+    expect(taken).toHaveProperty('disabled', true);
+    expect(taken.textContent).toContain('taken');
+    expect(within(screen.getByRole('dialog')).getByRole('button', { name: /Random/ })).toHaveProperty('disabled', false);
+  });
+
+  it('host removes bots and players', () => {
+    const h = inLobby('s1', lobbyOf([seat('s1', 'Ana'), seat('s2', 'Bob'), seat('b1', 'Bot Ivy', { kind: 'bot', botLevel: 'normal' })]));
+    expect(screen.queryByRole('button', { name: 'Academy: Bot Ivy' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Bot Ivy' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Bob' }));
+    expect(h.sock().sent).toEqual([
+      { t: 'removeSeat', seatId: 'b1' },
+      { t: 'removeSeat', seatId: 's2' },
+    ]);
   });
 
   it('turn timer and grace selects send settings in ms', () => {
@@ -111,7 +142,15 @@ describe('Lobby', () => {
 
   it('leave sends leave', () => {
     const h = inLobby('s2', lobbyOf([seat('s1', 'Ana'), seat('s2', 'Bob')]));
-    fireEvent.click(screen.getByRole('button', { name: 'Leave' }));
+    fireEvent.click(screen.getByRole('button', { name: /Leave/ }));
     expect(h.sock().sent).toEqual([{ t: 'leave' }]);
+  });
+
+  it('Match found (Casual/Ranked) has no academy picker: academies are drawn', () => {
+    inLobby('s1', { ...lobbyOf([seat('s1', 'Ana'), seat('s2', 'Bob')]), quick: true, startsAt: Date.now() + 10_000 });
+    expect(screen.getByText('Match found')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /^Academy:/ })).toBeNull();
+    expect(screen.queryByRole('combobox')).toBeNull();
+    expect(screen.queryByText('Random')).toBeNull();
   });
 });

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { Avatar } from '@arcane/protocol';
-import type { Conn } from '../src/room';
+import { PLAY_AGAIN_MS } from '@arcane/protocol';
+import { ManualClock } from '../src/clock';
+import { Room, type Conn } from '../src/room';
 import { FakeConn, lobbyWith, makeRoom, playToEnd } from './fakes';
 
 /** Ana (host), Bob and a Hard bot played a game to the end. */
@@ -59,13 +61,47 @@ describe('play again', () => {
     expect(fresh(a) && fresh(b)).toBe(true);
   });
 
-  it('drops players who left and starts when the rest are ready', () => {
+  it('Main menu after the game: that player goes, everyone else goes back to the room lobby', () => {
     const { room, a, b } = ended();
     room.handle(a, { t: 'playAgain', ready: true });
     room.handle(b, { t: 'leave' });
     expect(b.closedWith).toBe('left');
+    expect(room.phase).toBe('lobby');
+    expect(a.last('lobby')!.lobby.seats.map((s) => s.name)).toEqual(['Ana', 'Bot 1']);
+  });
+
+  it('the host passes to the next player when the host leaves', () => {
+    const { room, conns } = lobbyWith(['Ana', 'Bob', 'Cy']);
+    const [a, b, c] = conns;
+    room.handle(a, { t: 'start' });
+    playToEnd(room, conns);
+    room.handle(a, { t: 'leave' });
+    const lobby = c.last('lobby')!.lobby;
+    expect(lobby.hostId).toBe(b.last('joined')!.seatId);
+    expect(lobby.seats.map((s) => s.name)).toEqual(['Bob', 'Cy']);
+  });
+
+  it('after 20 s without everyone ready, the table goes back to the lobby', () => {
+    const { room, clock, a, b } = ended();
+    const end = a.last('game')!;
+    expect(end.lobbyAt).toBe(clock.now() + PLAY_AGAIN_MS);
+    room.handle(a, { t: 'playAgain', ready: true });
+    clock.advance(PLAY_AGAIN_MS - 1);
+    expect(room.phase).toBe('game');
+    clock.advance(1);
+    expect(room.phase).toBe('lobby');
+    expect(b.last('lobby')!.lobby.seats.map((s) => s.name)).toEqual(['Ana', 'Bob', 'Bot 1']);
+  });
+
+  it('a game started in time cancels the 20 s timer', () => {
+    const { room, clock, a, b } = ended();
+    room.handle(a, { t: 'playAgain', ready: true });
+    room.handle(b, { t: 'playAgain', ready: true });
     expect(fresh(a)).toBe(true);
-    expect(a.last('game')!.seats.filter((s) => s.kind !== 'archmage').map((s) => s.name)).toEqual(['Ana', 'Bot 1']);
+    expect(a.last('game')!.lobbyAt).toBeUndefined();
+    clock.advance(PLAY_AGAIN_MS);
+    expect(room.phase).toBe('game');
+    expect(fresh(a)).toBe(true);
   });
 
   it('a disconnected player does not block the others, and is dropped', () => {
@@ -107,14 +143,24 @@ describe('play again', () => {
     expect(a.last('game')!.seats.map((s) => s.ready)).toEqual([false, false, undefined]);
   });
 
-  it('works in quick-match rooms', () => {
-    const { room, clock, conns } = lobbyWith(['Ana', 'Bob']);
-    room.startCountdown(10_000, 3);
-    clock.advance(10_000);
-    playToEnd(room, conns);
-    conns.forEach((c) => room.handle(c, { t: 'playAgain', ready: true }));
-    expect(conns.every(fresh)).toBe(true);
-    expect(conns[0].last('game')!.seats).toHaveLength(3);
+  it('queue tables cannot be replayed in place (Play again queues again) and get no lobby timer', () => {
+    for (const kind of ['casual', 'ranked'] as const) {
+      const clock = new ManualClock(1_000_000);
+      const room = new Room('Q-1', { clientUrl: 'http://c', seed: () => 7 }, clock, { kind, queue: '1v1' });
+      const conns = [new FakeConn('a'), new FakeConn('b')];
+      conns.forEach((c, i) => room.join(c, `P${i}`));
+      room.startCountdown(1);
+      clock.advance(1);
+      playToEnd(room, conns);
+      expect(conns[0].last('game')).toMatchObject({ kind, queue: '1v1' });
+      expect(conns[0].last('game')!.lobbyAt).toBeUndefined();
+      for (const t of ['rematch', 'playAgainNow'] as const) {
+        room.handle(conns[0], { t });
+        expect(conns[0].lastError()).toBe('wrong_phase');
+      }
+      clock.advance(PLAY_AGAIN_MS);
+      expect(room.state!.phase).toBe('ended');
+    }
   });
 });
 

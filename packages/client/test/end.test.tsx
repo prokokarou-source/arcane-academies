@@ -139,28 +139,36 @@ describe('Game end', () => {
     expect(h.sock().sent).toEqual([{ t: 'playAgain', ready: false }]);
   });
 
-  it('after a ranked game the only way on is Main menu', () => {
-    const h = play('s1', 's1', [{ ...endedWith(0, [false, false, false]), kind: 'ranked' as const }]);
-    expect(screen.queryByRole('button', { name: 'Play again' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Back to lobby' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Start now' })).toBeNull();
+  it('after a Casual or Ranked game: Play again searches the same queue, Main menu goes home', () => {
+    for (const kind of ['casual', 'ranked'] as const) {
+      const h = play('s1', 's1', [{ ...endedWith(0, [false, false, false]), kind, queue: '3-5' as const }]);
+      expect(screen.queryByRole('button', { name: 'Lobby' })).toBeNull();
+      expect(screen.queryByText(/ready/)).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'Play again' }));
+      expect(h.sock().sent).toEqual([{ t: 'queueJoin', kind, queue: '3-5', name: 'Ana' }]);
+      expect(h.client.getState()).toMatchObject({ game: null, code: null, notice: null, queue: { kind, queue: '3-5' } });
+      cleanup();
+    }
+    const h = play('s1', 's1', [{ ...endedWith(0, [false, false, false]), kind: 'ranked' as const, queue: '1v1' as const }]);
     fireEvent.click(screen.getByRole('button', { name: 'Main menu' }));
     expect(h.sock().sent).toEqual([{ t: 'leave' }]);
     act(() => h.sock().receive({ t: 'closed', reason: 'left' }));
     expect(h.client.getState()).toMatchObject({ game: null, notice: null });
   });
 
-  it('the host can start now or go back to the lobby', () => {
-    const h = play('s1', 's1', [endedWith(0, [false, true, false])]);
-    fireEvent.click(screen.getByRole('button', { name: 'Start now' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Back to lobby' }));
-    expect(h.sock().sent).toEqual([{ t: 'playAgainNow' }, { t: 'rematch' }]);
+  it('room games: Play again, Lobby and Main menu for everyone; no Start now', () => {
+    const h = play('s2', 's1', [endedWith(1, [false, true, false])]);
+    expect(screen.queryByRole('button', { name: 'Start now' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Lobby' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Main menu' }));
+    expect(h.sock().sent).toEqual([{ t: 'rematch' }, { t: 'leave' }]);
   });
 
-  it('when the host is gone anyone may start; offline players do not count', () => {
-    play('s2', 's1', [endedWith(1, [false, true, false], [false, true, true])]);
+  it('room games count connected players only and show when the table goes back to the lobby', () => {
+    const g = endedWith(1, [false, true, false], [false, true, true]);
+    play('s2', 's1', [{ ...g, lobbyAt: Date.now() + 15_000 }]);
     expect(screen.getByText(/1\/2 ready/)).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Start now' })).toBeTruthy();
+    expect(screen.getByText(/Back to the lobby in 1[45] s/)).toBeTruthy();
   });
 
   it('a new game after the end screen starts clean', () => {

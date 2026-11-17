@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { cardDef, type ScoreBreakdown, type ScoreCategory, type ScoreItem } from '@arcane/engine';
 import type { GameResult, SeatStatus } from '@arcane/protocol';
 import { useClient, useClientState, useT, type T } from './context';
@@ -54,20 +54,26 @@ function ScoreItems(props: { items: ScoreItem[] | undefined }) {
   );
 }
 
+/** Room games: seconds until the table goes back to the lobby (server epoch ms). */
+function LobbyCountdown({ at }: { at: number }) {
+  const t = useT();
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  return <p className="muted small center">{t('toLobbyIn', { n: Math.max(0, Math.ceil((at - now) / 1000)) })}</p>;
+}
+
 export function GameEnd(props: { me: number; result: GameResult; seats: SeatStatus[] }) {
   const client = useClient();
   const t = useT();
-  const { seatId, hostId, local, game } = useClientState();
-  const rankedGame = game?.kind === 'ranked';
+  const { local, game } = useClientState();
+  const queueGame = !local && (game?.kind === 'casual' || game?.kind === 'ranked');
   const { result, seats, me } = props;
   const [open, setOpen] = useState<number | null>(me);
   const name = (seat: number) => seats[seat]?.name ?? `#${seat}`;
   const winners = result.winners.map(name).join(', ');
-  // The server marks the host seat; a host who is gone cannot block the next game, so anyone may start it then.
-  const marked = seats.some((s) => s.host);
-  const isHost = marked ? !!seats[me]?.host : seatId !== null && seatId === hostId;
-  const hostGone = marked ? seats.some((s) => s.host && !s.connected) : seats.some((s) => s.kind === 'human' && !s.connected && s.seat !== me);
-  const canStart = isHost || hostGone;
   const here = seats.filter((s) => s.kind === 'human' && s.connected);
   const readyN = here.filter((s) => s.ready).length;
   const iAmReady = !!seats[me]?.ready;
@@ -134,36 +140,41 @@ export function GameEnd(props: { me: number; result: GameResult; seats: SeatStat
         </table>
       </div>
       <p className="muted small center">{t('tapForDetails')}</p>
-      {rankedGame ? (
-        <button className="primary" onClick={() => client.leave()}>
-          {t('mainMenu')}
-        </button>
-      ) : (
-      <>
-      <div className="play-again">
-        {iAmReady ? (
-          <button onClick={() => client.playAgain(false)}>{t('notReady')}</button>
-        ) : (
+      {local ? (
+        <div className="play-again">
           <button className="primary" onClick={() => client.playAgain(true)}>
             {t('playAgain')}
           </button>
-        )}
-        <p className="muted small center" aria-live="polite">
-          {t('readyCount', { n: readyN, total: here.length })}
-          {' · '}
-          {t('playAgainHint')}
-        </p>
-        {canStart && (
+          <button onClick={() => client.leave()}>{t('mainMenu')}</button>
+        </div>
+      ) : queueGame ? (
+        <div className="play-again">
+          <button className="primary" onClick={() => client.queueAgain(seats[me]?.name ?? '')}>
+            {t('playAgain')}
+          </button>
+          <p className="muted small center">{t('playAgainQueue')}</p>
+          <button onClick={() => client.leave()}>{t('mainMenu')}</button>
+        </div>
+      ) : (
+        <div className="play-again">
+          {iAmReady ? (
+            <button onClick={() => client.playAgain(false)}>{t('notReady')}</button>
+          ) : (
+            <button className="primary" onClick={() => client.playAgain(true)}>
+              {t('playAgain')}
+            </button>
+          )}
+          <p className="muted small center" aria-live="polite">
+            {t('readyCount', { n: readyN, total: here.length })}
+            {' · '}
+            {t('playAgainHint')}
+          </p>
+          {game?.lobbyAt != null && <LobbyCountdown at={game.lobbyAt} />}
           <div className="row stretch">
-            <button onClick={() => client.playAgainNow()}>{t('startNow')}</button>
-            <button onClick={() => client.rematch()}>{t(local ? 'backToMenu' : 'backToLobby')}</button>
+            <button onClick={() => client.rematch()}>{t('lobby')}</button>
+            <button onClick={() => client.leave()}>{t('mainMenu')}</button>
           </div>
-        )}
-      </div>
-      <button className="link" onClick={() => client.leave()}>
-        {t('leave')}
-      </button>
-      </>
+        </div>
       )}
     </section>
   );

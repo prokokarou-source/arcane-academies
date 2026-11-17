@@ -566,6 +566,18 @@ export class GameClient {
     if (this.ws?.readyState === OPEN && !this.rejoinPending) this.raw(this.queueReq);
   }
 
+  /** After a Casual or Ranked game: leave the finished table and search the same queue again. */
+  queueAgain(name: string): void {
+    const g = this.state.game;
+    if (!g?.result || (g.kind !== 'casual' && g.kind !== 'ranked') || !g.queue) return;
+    const { kind, queue } = g;
+    // The server takes us off the old table when the search starts; nothing to tell the player.
+    this.session = null;
+    clearSession(this.deps.storage);
+    this.set({ seatId: null, code: null, hostId: null, lobby: null, game: null, prevView: null, duels: null, reveal: null, acting: false, notice: null });
+    this.queueJoin(kind, queue, name);
+  }
+
   queueLeave(): void {
     if (!this.queueReq) return;
     this.queueReq = null;
@@ -635,7 +647,7 @@ export class GameClient {
     this.send({ t: 'act', action });
   }
 
-  /** After the game, host: back to the lobby to change seats. */
+  /** After a room game: everyone back to the room's lobby. */
   rematch(): void {
     // Offline solo has no lobby (everyone else is a bot): "back to the lobby" means back to the menu.
     if (this.localGame) return this.endLocal(true);

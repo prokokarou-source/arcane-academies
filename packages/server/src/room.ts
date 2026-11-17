@@ -17,6 +17,7 @@ import type { Action, BotLevel, GameState, SeatConfig } from '@arcane/engine';
 import {
   DEFAULT_ROOM_CONFIG,
   DEFAULT_SETTINGS,
+  PLAY_AGAIN_MS,
   ROOM_SEATS,
   REACTION_BURST,
   REACTION_REFILL_MS,
@@ -169,6 +170,9 @@ export class Room {
   private quick = false;
   private startsAt: number | null = null;
   private startTimer: unknown = null;
+  /** After a room game: when everyone goes back to the lobby unless all are ready before. */
+  private lobbyAt: number | null = null;
+  private lobbyTimer: unknown = null;
   /** The current game's results were handed to onResults. */
   private recorded = false;
   private config: RoomConfig;
@@ -302,8 +306,8 @@ export class Room {
       case 'rematch':
       case 'playAgain':
       case 'playAgainNow':
-        // A ranked table plays once: everyone goes back to the menu and queues again.
-        if (this.setup.kind === 'ranked') return this.fail(m.conn!, 'wrong_phase', 'Ranked games cannot be replayed');
+        // A queue table plays once: Play again there means queueing again.
+        if (this.setup.kind !== 'room') return this.fail(m.conn!, 'wrong_phase', 'Queue games cannot be replayed');
         return msg.t === 'rematch' ? this.rematch(m) : msg.t === 'playAgain' ? this.playAgain(m, msg.ready) : this.playAgainNow(m);
       case 'react':
         return this.react(m, msg.reaction);
@@ -335,6 +339,7 @@ export class Room {
     this.closed = true;
     this.clearTurnTimer();
     this.clearStartTimer();
+    this.clearLobbyTimer();
     for (const m of this.members) {
       this.clearGrace(m);
       if (m.conn) m.conn.close(reason);
@@ -467,6 +472,16 @@ export class Room {
   private leave(m: Member, notify = true): void {
     const conn = m.conn!;
     if (this.phase === 'lobby') return this.removeMember(m, notify ? 'left' : null);
+    // After a room game, Main menu: that player goes, everyone else goes back to the room's lobby.
+    if (this.gameOver() && this.setup.kind === 'room') {
+      this.passHost(m);
+      this.members = this.members.filter((x) => x !== m);
+      this.clearGrace(m);
+      this.byConn.delete(conn);
+      m.conn = null;
+      if (notify) conn.close('left');
+      return this.toLobby();
+    }
     // In a game the seat stays (the token still works); a bot plays it from now on.
     this.byConn.delete(conn);
     m.conn = null;
@@ -483,15 +498,12 @@ export class Room {
 
   private removeMember(m: Member, reason: CloseReason | null): void {
     this.clearGrace(m);
+    this.passHost(m);
     this.members = this.members.filter((x) => x !== m);
     if (m.conn) {
       this.byConn.delete(m.conn);
       if (reason) m.conn.close(reason);
       m.conn = null;
-    }
-    if (this.hostId === m.id) {
-      const humans = this.members.filter((x) => x.kind === 'human');
-      this.hostId = (humans.find((x) => x.conn) ?? humans[0])?.id ?? null;
     }
     if (!this.members.some((x) => x.kind === 'human')) return this.close('left');
     this.broadcast();
@@ -540,24 +552,40 @@ export class Room {
     this.advance();
   }
 
+  /** After the game, anyone: the whole table goes back to the room's lobby (the host can change settings there). */
   private rematch(m: Member): void {
-    const host = this.members.find((x) => x.id === this.hostId);
-    // A host who is gone cannot block the rematch: any connected player may call it and becomes host.
-    if (m.id !== this.hostId && host?.conn) return this.fail(m.conn!, 'not_host', 'Only the host can do that');
-    if (this.phase !== 'game' || this.state?.phase !== 'ended') {
-      return this.fail(m.conn!, 'wrong_phase', 'The game has not ended');
-    }
+    if (!this.gameOver()) return this.fail(m.conn!, 'wrong_phase', 'The game has not ended');
+    this.toLobby();
+  }
+
+  /** Everyone back to the room's lobby; players who are gone are dropped. */
+  private toLobby(): void {
     this.clearTurnTimer();
+    this.clearLobbyTimer();
     this.phase = 'lobby';
     this.state = null;
-    this.hostId = m.id === this.hostId || !host?.conn ? m.id : this.hostId;
     for (const x of [...this.members]) {
       x.botControlled = false;
+      x.left = false;
       x.engineSeat = -1;
       x.ready = false;
-      if (x.kind === 'human' && !x.conn) this.removeMember(x, 'removed');
+      if (x.kind === 'human' && !x.conn) {
+        this.clearGrace(x);
+        this.passHost(x);
+        this.members = this.members.filter((y) => y !== x);
+      }
     }
-    if (!this.closed) this.broadcast();
+    if (!this.members.some((x) => x.kind === 'human' && x.conn)) return this.close('left');
+    if (!this.members.some((x) => x.id === this.hostId)) this.hostId = this.members.find((x) => x.kind === 'human')!.id;
+    this.broadcast();
+  }
+
+  /** `m` is going: if it hosts, the next player round the table (connected first) becomes host. */
+  private passHost(m: Member): void {
+    if (this.hostId !== m.id) return;
+    const i = this.members.indexOf(m);
+    const order = [...this.members.slice(i + 1), ...this.members.slice(0, Math.max(i, 0))].filter((x) => x !== m && x.kind === 'human');
+    this.hostId = (order.find((x) => x.conn) ?? order[0])?.id ?? null;
   }
 
   private gameOver(): boolean {
@@ -594,9 +622,11 @@ export class Room {
    */
   private replay(): void {
     this.clearTurnTimer();
+    this.clearLobbyTimer();
     for (const x of [...this.members]) {
       if (x.kind !== 'human' || x.conn) continue;
       this.clearGrace(x);
+      this.passHost(x);
       this.members = this.members.filter((y) => y !== x);
     }
     const humans = this.members.filter((x) => x.kind === 'human');
@@ -675,7 +705,10 @@ export class Room {
       this.turnSeq++;
     }
     this.state = s;
-    if (s.phase === 'ended' && !this.recorded) this.record(s);
+    if (s.phase === 'ended' && !this.recorded) {
+      this.record(s);
+      this.armLobbyTimer();
+    }
     this.armTurnTimer();
     this.broadcast();
   }
@@ -736,6 +769,24 @@ export class Room {
     });
   }
 
+  /** Room games: not everyone tapped Play again in time, so the table goes back to the lobby. */
+  private armLobbyTimer(): void {
+    if (this.setup.kind !== 'room') return;
+    this.clearLobbyTimer();
+    this.lobbyAt = this.clock.now() + PLAY_AGAIN_MS;
+    this.lobbyTimer = this.clock.setTimer(PLAY_AGAIN_MS, () => {
+      this.lobbyTimer = null;
+      this.lobbyAt = null;
+      if (!this.closed && this.gameOver()) this.toLobby();
+    });
+  }
+
+  private clearLobbyTimer(): void {
+    if (this.lobbyTimer !== null) this.clock.clearTimer(this.lobbyTimer);
+    this.lobbyTimer = null;
+    this.lobbyAt = null;
+  }
+
   private clearTurnTimer(): void {
     if (this.turnTimer !== null) this.clock.clearTimer(this.turnTimer);
     this.turnTimer = null;
@@ -763,7 +814,7 @@ export class Room {
       if (!m.conn) continue;
       const seat = m.engineSeat;
       const legal = s.players[seat].pending ? [] : legalActions(s, seat);
-      m.conn.send({ t: 'game', view: viewFor(s, seat), legal, seats, deadline: this.deadline, kind: this.setup.kind, ...(result ? { result } : {}), ...(reveal ? { reveal } : {}) });
+      m.conn.send({ t: 'game', view: viewFor(s, seat), legal, seats, deadline: this.deadline, kind: this.setup.kind, ...(this.setup.queue ? { queue: this.setup.queue } : {}), ...(result && this.lobbyAt !== null ? { lobbyAt: this.lobbyAt } : {}), ...(result ? { result } : {}), ...(reveal ? { reveal } : {}) });
     }
   }
 

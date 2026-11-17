@@ -113,6 +113,22 @@ describe('solo game in the browser', () => {
     expect(h.sockets.flatMap((s) => s.sent)).toHaveLength(sent);
   });
 
+  it('the end screen offers Play again and Main menu only', () => {
+    const r = renderApp();
+    act(() => {
+      r.client.solo('Ana', 2, 'easy');
+      playToEnd(r.client, r.runTimers);
+    });
+    expect(screen.getByText('Game over')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Lobby' })).toBeNull();
+    expect(screen.queryByText(/ready/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Play again' }));
+    expect(r.client.getState().game?.view).toMatchObject({ term: 1, turn: 1 });
+    act(() => playToEnd(r.client, r.runTimers));
+    fireEvent.click(screen.getByRole('button', { name: 'Main menu' }));
+    expect(r.client.getState()).toMatchObject({ local: false, game: null, notice: null });
+  });
+
   it('starts from the Play tab while the server is unreachable', () => {
     const r = renderApp();
     act(() => r.sock().serverClose(1006));

@@ -38,7 +38,8 @@ const HAPTICS: Partial<Record<Cue, number | number[]>> = {
 };
 /** Cues that reuse another cue's file, and quieter cues. */
 const FILES: Partial<Record<Cue, string>> = { reaction: 'tap' };
-const VOLUMES: Partial<Record<Cue, number>> = { reaction: 0.4 };
+// tap rings a little (glass "tink") and plays on every button, so it sits a bit under the other effects
+const VOLUMES: Partial<Record<Cue, number>> = { tap: 0.6, reaction: 0.4 };
 
 export function createSoundBoard(opts: {
   backend: AudioBackend;

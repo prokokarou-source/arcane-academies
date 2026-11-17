@@ -51,6 +51,7 @@ export function Rules({ onBack }: { onBack(): void }) {
       <Section title="1. The goal" open>
         <p>Renown is your score. You earn it from buildings, your tower, research, duels with your neighbours and leftover coins.</p>
         <p>2 to 7 players, one phone each. Bots can fill empty seats.</p>
+        <p>When few players are online, AI opponents fill the table.</p>
       </Section>
 
       <Section title="2. Setting up">

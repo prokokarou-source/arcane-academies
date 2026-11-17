@@ -7,6 +7,7 @@ import {
   botPick,
   createGame,
   finalScores,
+  hardChoose,
   legalActions,
   resolveTurn,
   submitAction,
@@ -53,6 +54,8 @@ export interface RoomOptions {
   /** Server-side defaults. May go outside the host's limits (useful for tests and local play). */
   defaultSettings?: Partial<RoomSettings>;
   seed?: () => number;
+  /** Uniform [0, 1) for AI think times (default Math.random). */
+  random?(): number;
   /** Seat order of a room game (default: a fair random shuffle). Tests pass a fixed order. */
   shuffle?<T>(xs: T[]): T[];
   /** The account (user id) logged in on this connection, if any. Its seat's result is recorded. */
@@ -129,9 +132,24 @@ export function shuffle<T>(xs: T[]): T[] {
 export const MAX_SEATS = 7;
 const TAKEOVER_LEVEL: BotLevel = 'normal';
 
+/** How long an AI opponent thinks (ms): quick on obvious picks, longer on close ones, 2-15 s. `r1`, `r2` uniform [0, 1). */
+export function aiThinkMs(margin: number, r1: number, r2: number): number {
+  const hard = Math.exp(-Math.max(0, margin) / 1.5); // 1 = a coin flip, 0 = obvious
+  return Math.round(Math.min(15_000, 2_000 + 11_000 * hard * (0.6 + 0.4 * r1) + 2_000 * r2));
+}
+
+/** The look of an AI opponent: a player-like profile. */
+export interface AiSeat {
+  username: string;
+  avatar: Avatar;
+  /** Ranked: its rating is the humans' average plus this (about +-50); never stored. */
+  offset: number;
+}
+
 interface Member {
   id: SeatId;
-  kind: 'human' | 'bot';
+  /** 'ai': a Casual/Ranked opponent played by the Hard bot that shows as a player (no "Bot" name, thinks before it picks). */
+  kind: 'human' | 'bot' | 'ai';
   name: string;
   botLevel?: BotLevel;
   academyId: string | null;
@@ -155,6 +173,8 @@ interface Member {
   avatar?: Avatar | null;
   /** After the game: this player tapped "Play again". */
   ready?: boolean;
+  /** AI opponents: rating offset (see AiSeat). */
+  aiOffset?: number;
 }
 
 /**
@@ -190,6 +210,9 @@ export class Room {
   /** The current game's draw, sent with its first game message and then dropped. */
   private reveal: GameReveal | null = null;
   private side: Side = 'A';
+  /** AI opponents thinking this turn: engine seat -> timer (kept after it fires so the turn is not thought twice). */
+  private aiTimers = new Map<number, unknown>();
+  private aiTurn = -1;
 
   constructor(
     readonly code: string,
@@ -345,10 +368,29 @@ export class Room {
     this.broadcast();
   }
 
+  /** Queue rooms, before the countdown ends: one more seat for an AI opponent. */
+  addAi(ai: AiSeat): void {
+    if (this.closed || this.phase !== 'lobby' || this.setup.kind === 'room' || this.members.length >= MAX_SEATS) return;
+    this.members.push({
+      id: this.nextSeatId(),
+      kind: 'ai',
+      name: ai.username,
+      username: ai.username,
+      avatar: ai.avatar,
+      aiOffset: ai.offset,
+      academyId: null,
+      conn: null,
+      botControlled: false,
+      engineSeat: -1,
+    });
+    this.broadcast();
+  }
+
   close(reason: CloseReason): void {
     if (this.closed) return;
     this.closed = true;
     this.clearTurnTimer();
+    this.clearAiTimers();
     this.clearStartTimer();
     this.clearLobbyTimer();
     for (const m of this.members) {
@@ -501,7 +543,11 @@ export class Room {
     m.left = true;
     // With no real player left, nobody is watching: end the room instead of letting bots play on.
     const stay = this.members.filter((x) => x.kind === 'human' && !x.left);
-    if (stay.length === 0) return this.close('left');
+    if (stay.length === 0) {
+      // Ranked against AI opponents only: leaving is a loss, not a way out of one.
+      if (this.setup.kind === 'ranked' && !this.recorded && this.members.some((x) => x.kind === 'ai')) this.recordForfeit();
+      return this.close('left');
+    }
     if (this.hostId === m.id) this.hostId = (stay.find((x) => x.conn) ?? stay[0]).id;
     if (this.replayIfAllReady()) return;
     this.advance();
@@ -543,7 +589,8 @@ export class Room {
     const mode = this.setup.kind === 'room' ? this.config.sideMode : 'random';
     this.side = mode === 'random' ? (seed % 2 === 0 ? 'A' : 'B') : mode;
     const seats: SeatConfig[] = this.members.map((m) => ({
-      kind: m.kind,
+      // AI opponents look like players to everyone; the room plays them.
+      kind: m.kind === 'ai' ? 'human' : m.kind,
       name: m.name,
       side: this.side,
       ...(m.academyId ? { academyId: m.academyId } : {}),
@@ -574,6 +621,7 @@ export class Room {
   /** Everyone back to the room's lobby; players who are gone are dropped. */
   private toLobby(): void {
     this.clearTurnTimer();
+    this.clearAiTimers();
     this.clearLobbyTimer();
     this.phase = 'lobby';
     this.state = null;
@@ -635,6 +683,7 @@ export class Room {
    */
   private replay(): void {
     this.clearTurnTimer();
+    this.clearAiTimers();
     this.clearLobbyTimer();
     for (const x of [...this.members]) {
       if (x.kind !== 'human' || x.conn) continue;
@@ -703,7 +752,10 @@ export class Room {
       if (p.pending) continue;
       if (p.config.kind === 'archmage') next = submitAction(next, seat, archmagePick(next, seat));
       else if (p.config.kind === 'bot') next = submitAction(next, seat, botPick(next, seat, p.config.botLevel ?? 'normal'));
-      else if (everyone || this.memberAt(seat)?.botControlled) next = submitAction(next, seat, botPick(next, seat, TAKEOVER_LEVEL));
+      else if (this.memberAt(seat)?.kind === 'ai') {
+        // Normally the AI picks after thinking (scheduleAi); at the turn deadline it picks at once.
+        if (everyone) next = submitAction(next, seat, botPick(next, seat, 'hard'));
+      } else if (everyone || this.memberAt(seat)?.botControlled) next = submitAction(next, seat, botPick(next, seat, TAKEOVER_LEVEL));
     }
     return next;
   }
@@ -724,6 +776,44 @@ export class Room {
     }
     this.armTurnTimer();
     this.broadcast();
+    this.scheduleAi();
+  }
+
+  /** AI opponents choose now (Hard) but submit after a human-like think, within the turn timer. */
+  private scheduleAi(): void {
+    const s = this.state;
+    if (this.closed || !s || s.phase === 'ended') return this.clearAiTimers();
+    if (this.aiTurn !== this.turnSeq) {
+      this.clearAiTimers();
+      this.aiTurn = this.turnSeq;
+    }
+    const turn = this.turnSeq;
+    for (const seat of actingSeats(s)) {
+      if (this.memberAt(seat)?.kind !== 'ai' || s.players[seat].pending || this.aiTimers.has(seat)) continue;
+      const choice = hardChoose(s, seat);
+      const random = this.opts.random ?? Math.random;
+      let ms = aiThinkMs(choice.margin, random(), random());
+      if (this.deadline !== null) ms = Math.max(500, Math.min(ms, this.deadline - this.clock.now() - 1_500));
+      this.aiTimers.set(
+        seat,
+        this.clock.setTimer(ms, () => {
+          const now = this.state;
+          if (this.closed || !now || now.phase === 'ended' || this.turnSeq !== turn || now.players[seat].pending) return;
+          try {
+            this.state = submitAction(now, seat, choice.action);
+          } catch {
+            this.state = submitAction(now, seat, botPick(now, seat, 'hard'));
+          }
+          this.advance();
+        }),
+      );
+    }
+  }
+
+  private clearAiTimers(): void {
+    for (const t of this.aiTimers.values()) this.clock.clearTimer(t);
+    this.aiTimers.clear();
+    this.aiTurn = -1;
   }
 
   /** One result per account in the game (an account in two seats counts once). */
@@ -744,6 +834,9 @@ export class Room {
       rivals.map((b) => ({ seat: b.seat, total: b.total, coins: coins(b.seat), quit: quit(b.seat) })),
       ranked,
     );
+    const aiRivals = this.members
+      .filter((x) => x.kind === 'ai' && places.has(x.engineSeat))
+      .map((x) => ({ place: places.get(x.engineSeat)!, offset: x.aiOffset ?? 0 }));
     const seen = new Set<string>();
     const records: GameRecord[] = [];
     for (const m of this.members) {
@@ -762,6 +855,35 @@ export class Room {
         kind: this.setup.kind,
         ...(this.setup.queue ? { queue: this.setup.queue } : {}),
         side: this.side,
+        ...(ranked && aiRivals.length ? { aiRivals } : {}),
+      });
+    }
+    if (records.length) this.opts.onResults(records);
+  }
+
+  /** Every person left a ranked game mid-way: they all share last place behind the AI opponents (who draw). */
+  private recordForfeit(): void {
+    this.recorded = true;
+    if (!this.opts.onResults || !this.state) return;
+    const ai = this.members.filter((x) => x.kind === 'ai');
+    const aiRivals = ai.map((x) => ({ place: 1, offset: x.aiOffset ?? 0 }));
+    const seen = new Set<string>();
+    const records: GameRecord[] = [];
+    for (const m of this.members) {
+      if (m.kind !== 'human' || !m.accountId || seen.has(m.accountId)) continue;
+      seen.add(m.accountId);
+      records.push({
+        userId: m.accountId,
+        academyId: this.state.players[m.engineSeat].academyId,
+        score: 0,
+        place: ai.length + 1,
+        won: false,
+        players: this.members.length,
+        playedAt: this.clock.now(),
+        kind: 'ranked',
+        ...(this.setup.queue ? { queue: this.setup.queue } : {}),
+        side: this.side,
+        aiRivals,
       });
     }
     if (records.length) this.opts.onResults(records);
@@ -843,11 +965,11 @@ export class Room {
       ...(this.quick ? { quick: true, startsAt: this.startsAt } : {}),
       seats: this.members.map((m) => ({
         id: m.id,
-        kind: m.kind,
+        kind: m.kind === 'ai' ? 'human' : m.kind,
         name: m.name,
         ...(m.kind === 'bot' ? { botLevel: m.botLevel } : {}),
         academyId: m.academyId,
-        connected: m.kind === 'bot' || !!m.conn,
+        connected: m.kind !== 'human' || !!m.conn,
         ...(m.username ? { username: m.username } : {}),
         ...(m.avatar ? { avatar: m.avatar } : {}),
       })),
@@ -862,7 +984,7 @@ export class Room {
         seat: p.seat,
         name: p.config.name,
         kind: p.config.kind,
-        connected: p.config.kind !== 'human' || !!m?.conn,
+        connected: p.config.kind !== 'human' || !!m?.conn || m?.kind === 'ai',
         botControlled: !!m?.botControlled,
         ...(m?.username ? { username: m.username } : {}),
         ...(m?.avatar ? { avatar: m.avatar } : {}),

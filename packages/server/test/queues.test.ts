@@ -12,7 +12,7 @@ function setup(opts: Partial<ManagerOptions> = {}) {
   const clock = new ManualClock(1_000_000);
   const records: GameRecord[][] = [];
   const mgr = new RoomManager(
-    { clientUrl: 'http://client', seed: () => 7, quickStartMs: 10 * SEC, onResults: (r) => records.push(r), ...opts },
+    { clientUrl: 'http://client', seed: () => 7, quickStartMs: 10 * SEC, aiFillMs: null, onResults: (r) => records.push(r), ...opts },
     clock,
   );
   const queue = (name: string, queue: Queue = '1v1', kind: QueueKind = 'casual') => {

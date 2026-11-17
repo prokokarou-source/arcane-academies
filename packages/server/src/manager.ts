@@ -1,4 +1,5 @@
 import type { ClientMessage, OpenRoom, Queue, QueueKind } from '@arcane/protocol';
+import { AI_PROFILES, type AiProfile } from './aiProfiles';
 import type { Clock } from './clock';
 import { generateCode, normalizeCode } from './codes';
 import { checkConfig, Room, type Conn, type RoomOptions, type RoomSetup } from './room';
@@ -14,6 +15,11 @@ export interface ManagerOptions extends RoomOptions {
   queueFillMs: Record<Exclude<Queue, '1v1'>, number>;
   /** Public room list: at most one update per this many ms. */
   roomsThrottleMs: number;
+  /**
+   * Casual/Ranked: when few people are online, empty seats are filled with AI opponents after a random search
+   * time in [min, max] ms (null: never). Humans waiting together are always matched first.
+   */
+  aiFillMs: [number, number] | null;
   /** Queues: true when the accounts on these two connections must not play together (one blocked the other). */
   apart?(a: Conn, b: Conn): boolean;
 }
@@ -33,7 +39,16 @@ interface Waiting {
   queue: Queue;
   since: number;
   account: string | null;
+  /** When AI opponents fill the table if no full table of people formed by then. */
+  aiAt: number;
 }
+
+/** How many recent AI opponents each player is not shown again. */
+const AI_RECENT = 40;
+/** Players whose recent AI opponents are remembered (oldest forgotten first). */
+const AI_RECENT_PLAYERS = 5_000;
+/** Ranked AI ratings: the humans' average plus up to this either way. */
+export const AI_RATING_SPREAD = 50;
 
 export const DEFAULT_MANAGER_OPTIONS: ManagerOptions = {
   clientUrl: 'http://localhost:5173',
@@ -42,6 +57,7 @@ export const DEFAULT_MANAGER_OPTIONS: ManagerOptions = {
   quickStartMs: 10_000,
   queueFillMs: { '3-5': 45_000, '6-7': 60_000 },
   roomsThrottleMs: 1_000,
+  aiFillMs: [5_000, 20_000],
 };
 
 const ENTERS_ROOM: readonly ClientMessage['t'][] = ['create', 'createRoom', 'join', 'joinRoom', 'rejoin'];
@@ -59,6 +75,8 @@ export class RoomManager {
   private roomsSent = '[]';
   private roomsSentAt = -Infinity;
   private roomsTimer: unknown = null;
+  /** Recent AI opponents per player (account id, or guest name), newest last. */
+  private aiSeen = new Map<string, string[]>();
 
   constructor(
     opts: Partial<ManagerOptions>,
@@ -101,7 +119,8 @@ export class RoomManager {
         if (msg.kind === 'ranked' && !account) return conn.send({ t: 'error', code: 'not_logged_in', message: 'Log in to play ranked' });
         this.detach(conn);
         this.waiting = this.waiting.filter((w) => w.conn !== conn);
-        this.waiting.push({ conn, name: msg.name, kind: msg.kind, queue: msg.queue, since: this.clock.now(), account });
+        const now = this.clock.now();
+        this.waiting.push({ conn, name: msg.name, kind: msg.kind, queue: msg.queue, since: now, account, aiAt: now + this.aiDelay() });
         return this.queueChanged();
       }
       case 'queueLeave':
@@ -231,12 +250,22 @@ export class RoomManager {
     const pools = new Map<string, Waiting[]>();
     for (const w of this.waiting) pools.set(`${w.kind}:${w.queue}`, this.pool(w.kind, w.queue));
     for (const pool of pools.values()) this.match(pool);
+    // Whoever has searched long enough gets a table, with AI opponents in the empty seats.
+    for (const key of pools.keys()) {
+      const [kind, queue] = key.split(':') as [QueueKind, Queue];
+      let pool = this.pool(kind, queue);
+      while (this.opts.aiFillMs && pool.length > 0 && pool[0].aiAt <= now) {
+        this.fillWithAi(pool);
+        pool = this.pool(kind, queue);
+      }
+    }
     let next = Infinity;
     for (const w of this.waiting) {
       const pool = this.pool(w.kind, w.queue);
       w.conn.send({ t: 'queueState', kind: w.kind, queue: w.queue, searching: pool.length, waitedMs: now - w.since });
       const fill = this.fillMs(w.queue);
       if (fill !== null && pool.length >= QUEUE_SIZES[w.queue].min && w.since + fill > now) next = Math.min(next, w.since + fill);
+      if (this.opts.aiFillMs) next = Math.min(next, Math.max(w.aiAt, now));
     }
     if (this.queueTimer !== null) this.clock.clearTimer(this.queueTimer);
     this.queueTimer = null;
@@ -273,12 +302,50 @@ export class RoomManager {
     return group;
   }
 
-  /** Open a queue room for these players; its lobby counts down and then starts with exactly them. */
-  private seat(group: Waiting[]): void {
+  /** Open a queue room for these players (plus AI opponents); its lobby counts down and then starts with exactly them. */
+  private seat(group: Waiting[], ai: AiProfile[] = []): void {
     this.waiting = this.waiting.filter((w) => !group.includes(w));
     const room = this.open({ kind: group[0].kind, queue: group[0].queue });
     for (const w of group) this.enter(w.conn, room, () => room.join(w.conn, w.name));
+    for (const p of ai) room.addAi({ ...p, offset: Math.round((this.random() * 2 - 1) * AI_RATING_SPREAD) });
     room.startCountdown(this.opts.quickStartMs);
+  }
+
+  /** The oldest searcher waited long enough: seat whoever can play with them, and AI opponents in the rest of a table. */
+  private fillWithAi(pool: Waiting[]): void {
+    const { min, max } = QUEUE_SIZES[pool[0].queue];
+    const group = this.pick(pool, max);
+    // A table size people would pick: at least the queue's minimum, never fewer seats than people.
+    const lo = Math.max(min, group.length);
+    const size = lo + Math.floor(this.random() * (max - lo + 1));
+    this.seat(group, this.aiFor(group, size - group.length));
+  }
+
+  /** `n` different profiles none of these players met recently (falls back to any free one if the pool runs short). */
+  private aiFor(group: Waiting[], n: number): AiProfile[] {
+    const keys = group.map((w) => w.account ?? `guest:${w.name}`);
+    const recent = new Set(keys.flatMap((k) => this.aiSeen.get(k) ?? []));
+    const fresh = AI_PROFILES.filter((p) => !recent.has(p.username));
+    const pool = fresh.length >= n ? fresh : [...AI_PROFILES];
+    const out: AiProfile[] = [];
+    while (out.length < n && pool.length > 0) out.push(...pool.splice(Math.floor(this.random() * pool.length), 1));
+    for (const k of keys) {
+      const list = [...(this.aiSeen.get(k) ?? []), ...out.map((p) => p.username)].slice(-AI_RECENT);
+      this.aiSeen.delete(k);
+      this.aiSeen.set(k, list);
+    }
+    while (this.aiSeen.size > AI_RECENT_PLAYERS) this.aiSeen.delete(this.aiSeen.keys().next().value!);
+    return out;
+  }
+
+  private aiDelay(): number {
+    const range = this.opts.aiFillMs;
+    if (!range) return Infinity;
+    return range[0] + Math.floor(this.random() * (range[1] - range[0] + 1));
+  }
+
+  private random(): number {
+    return (this.opts.random ?? Math.random)();
   }
 
   private enter(conn: Conn, room: Room, fn: () => void): void {

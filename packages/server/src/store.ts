@@ -67,6 +67,8 @@ export interface GameRecord {
   queue?: Queue;
   /** The table's academy side. */
   side?: Side;
+  /** Ranked games with AI opponents: their places and rating offsets (rated against, never stored). */
+  aiRivals?: { place: number; offset: number }[];
   /** Ranked games: the rating change this game made (set when ratings are applied). */
   ratingDelta?: number;
 }

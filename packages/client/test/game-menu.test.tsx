@@ -32,6 +32,8 @@ describe('game menu', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
     fireEvent.click(screen.getByRole('button', { name: 'Rules' }));
     expect(screen.getByText('10. Duels')).toBeTruthy();
+    // Honest about AI opponents in matchmaking.
+    expect(screen.getByText('When few players are online, AI opponents fill the table.')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Back' }));
     expect(screen.getByText('Term I')).toBeTruthy();
   });

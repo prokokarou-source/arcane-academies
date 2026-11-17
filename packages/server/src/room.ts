@@ -7,6 +7,7 @@ import {
   botPick,
   createGame,
   finalScores,
+  hardChoose,
   legalActions,
   resolveTurn,
   submitAction,
@@ -17,6 +18,7 @@ import type { Action, BotLevel, GameState, SeatConfig } from '@arcane/engine';
 import {
   DEFAULT_ROOM_CONFIG,
   DEFAULT_SETTINGS,
+  PLAY_AGAIN_MS,
   ROOM_SEATS,
   REACTION_BURST,
   REACTION_REFILL_MS,
@@ -52,6 +54,10 @@ export interface RoomOptions {
   /** Server-side defaults. May go outside the host's limits (useful for tests and local play). */
   defaultSettings?: Partial<RoomSettings>;
   seed?: () => number;
+  /** Uniform [0, 1) for AI think times (default Math.random). */
+  random?(): number;
+  /** Seat order of a room game (default: a fair random shuffle). Tests pass a fixed order. */
+  shuffle?<T>(xs: T[]): T[];
   /** The account (user id) logged in on this connection, if any. Its seat's result is recorded. */
   accountOf?(conn: Conn): string | null;
   /** The username logged in on this connection, if any; shown on its seat. */
@@ -86,12 +92,64 @@ export function checkConfig(c: RoomConfig, humans: number): string | null {
   return null;
 }
 
+export interface Finish {
+  seat: number;
+  total: number;
+  coins: number;
+  /** Ranked: left the game (or was still away at the end). */
+  quit?: boolean;
+}
+
+/**
+ * Finishing place per seat (1 = first).
+ * Ranked: equal totals share a place (an Elo draw) and everyone who quit shares last place, below all who stayed.
+ * Other games: equal totals are split by coins; equal totals and coins share a place.
+ */
+export function placesOf(finish: Finish[], ranked: boolean): Map<number, number> {
+  const out = new Map<number, number>();
+  if (!ranked) {
+    for (const f of finish) {
+      out.set(f.seat, 1 + finish.filter((b) => b.total > f.total || (b.total === f.total && b.coins > f.coins)).length);
+    }
+    return out;
+  }
+  const stayed = finish.filter((f) => !f.quit);
+  for (const f of finish) {
+    out.set(f.seat, f.quit ? stayed.length + 1 : 1 + stayed.filter((b) => b.total > f.total).length);
+  }
+  return out;
+}
+
+/** Fisher-Yates with crypto randomness. */
+export function shuffle<T>(xs: T[]): T[] {
+  for (let i = xs.length - 1; i > 0; i--) {
+    const j = randomInt(i + 1);
+    [xs[i], xs[j]] = [xs[j], xs[i]];
+  }
+  return xs;
+}
+
 export const MAX_SEATS = 7;
 const TAKEOVER_LEVEL: BotLevel = 'normal';
 
+/** How long an AI opponent thinks (ms): quick on obvious picks, longer on close ones, 2-15 s. `r1`, `r2` uniform [0, 1). */
+export function aiThinkMs(margin: number, r1: number, r2: number): number {
+  const hard = Math.exp(-Math.max(0, margin) / 1.5); // 1 = a coin flip, 0 = obvious
+  return Math.round(Math.min(15_000, 2_000 + 11_000 * hard * (0.6 + 0.4 * r1) + 2_000 * r2));
+}
+
+/** The look of an AI opponent: a player-like profile. */
+export interface AiSeat {
+  username: string;
+  avatar: Avatar;
+  /** Ranked: its rating is the humans' average plus this (about +-50); never stored. */
+  offset: number;
+}
+
 interface Member {
   id: SeatId;
-  kind: 'human' | 'bot';
+  /** 'ai': a Casual/Ranked opponent played by the Hard bot that shows as a player (no "Bot" name, thinks before it picks). */
+  kind: 'human' | 'bot' | 'ai';
   name: string;
   botLevel?: BotLevel;
   academyId: string | null;
@@ -115,6 +173,8 @@ interface Member {
   avatar?: Avatar | null;
   /** After the game: this player tapped "Play again". */
   ready?: boolean;
+  /** AI opponents: rating offset (see AiSeat). */
+  aiOffset?: number;
 }
 
 /**
@@ -141,12 +201,18 @@ export class Room {
   private quick = false;
   private startsAt: number | null = null;
   private startTimer: unknown = null;
+  /** After a room game: when everyone goes back to the lobby unless all are ready before. */
+  private lobbyAt: number | null = null;
+  private lobbyTimer: unknown = null;
   /** The current game's results were handed to onResults. */
   private recorded = false;
   private config: RoomConfig;
   /** The current game's draw, sent with its first game message and then dropped. */
   private reveal: GameReveal | null = null;
   private side: Side = 'A';
+  /** AI opponents thinking this turn: engine seat -> timer (kept after it fires so the turn is not thought twice). */
+  private aiTimers = new Map<number, unknown>();
+  private aiTurn = -1;
 
   constructor(
     readonly code: string,
@@ -274,8 +340,8 @@ export class Room {
       case 'rematch':
       case 'playAgain':
       case 'playAgainNow':
-        // A ranked table plays once: everyone goes back to the menu and queues again.
-        if (this.setup.kind === 'ranked') return this.fail(m.conn!, 'wrong_phase', 'Ranked games cannot be replayed');
+        // A queue table plays once: Play again there means queueing again.
+        if (this.setup.kind !== 'room') return this.fail(m.conn!, 'wrong_phase', 'Queue games cannot be replayed');
         return msg.t === 'rematch' ? this.rematch(m) : msg.t === 'playAgain' ? this.playAgain(m, msg.ready) : this.playAgainNow(m);
       case 'react':
         return this.react(m, msg.reaction);
@@ -302,11 +368,31 @@ export class Room {
     this.broadcast();
   }
 
+  /** Queue rooms, before the countdown ends: one more seat for an AI opponent. */
+  addAi(ai: AiSeat): void {
+    if (this.closed || this.phase !== 'lobby' || this.setup.kind === 'room' || this.members.length >= MAX_SEATS) return;
+    this.members.push({
+      id: this.nextSeatId(),
+      kind: 'ai',
+      name: ai.username,
+      username: ai.username,
+      avatar: ai.avatar,
+      aiOffset: ai.offset,
+      academyId: null,
+      conn: null,
+      botControlled: false,
+      engineSeat: -1,
+    });
+    this.broadcast();
+  }
+
   close(reason: CloseReason): void {
     if (this.closed) return;
     this.closed = true;
     this.clearTurnTimer();
+    this.clearAiTimers();
     this.clearStartTimer();
+    this.clearLobbyTimer();
     for (const m of this.members) {
       this.clearGrace(m);
       if (m.conn) m.conn.close(reason);
@@ -439,6 +525,16 @@ export class Room {
   private leave(m: Member, notify = true): void {
     const conn = m.conn!;
     if (this.phase === 'lobby') return this.removeMember(m, notify ? 'left' : null);
+    // After a room game, Main menu: that player goes, everyone else goes back to the room's lobby.
+    if (this.gameOver() && this.setup.kind === 'room') {
+      this.passHost(m);
+      this.members = this.members.filter((x) => x !== m);
+      this.clearGrace(m);
+      this.byConn.delete(conn);
+      m.conn = null;
+      if (notify) conn.close('left');
+      return this.toLobby();
+    }
     // In a game the seat stays (the token still works); a bot plays it from now on.
     this.byConn.delete(conn);
     m.conn = null;
@@ -447,7 +543,11 @@ export class Room {
     m.left = true;
     // With no real player left, nobody is watching: end the room instead of letting bots play on.
     const stay = this.members.filter((x) => x.kind === 'human' && !x.left);
-    if (stay.length === 0) return this.close('left');
+    if (stay.length === 0) {
+      // Ranked against AI opponents only: leaving is a loss, not a way out of one.
+      if (this.setup.kind === 'ranked' && !this.recorded && this.members.some((x) => x.kind === 'ai')) this.recordForfeit();
+      return this.close('left');
+    }
     if (this.hostId === m.id) this.hostId = (stay.find((x) => x.conn) ?? stay[0]).id;
     if (this.replayIfAllReady()) return;
     this.advance();
@@ -455,15 +555,12 @@ export class Room {
 
   private removeMember(m: Member, reason: CloseReason | null): void {
     this.clearGrace(m);
+    this.passHost(m);
     this.members = this.members.filter((x) => x !== m);
     if (m.conn) {
       this.byConn.delete(m.conn);
       if (reason) m.conn.close(reason);
       m.conn = null;
-    }
-    if (this.hostId === m.id) {
-      const humans = this.members.filter((x) => x.kind === 'human');
-      this.hostId = (humans.find((x) => x.conn) ?? humans[0])?.id ?? null;
     }
     if (!this.members.some((x) => x.kind === 'human')) return this.close('left');
     this.broadcast();
@@ -484,13 +581,16 @@ export class Room {
   }
 
   private begin(): void {
+    // Rooms: a new seating every game, so neighbours change (bots shuffled with the humans).
+    if (this.setup.kind === 'room') this.members = (this.opts.shuffle ?? shuffle)([...this.members]);
     const n = this.members.length;
     const seed = this.opts.seed?.() ?? randomInt(2 ** 31 - 1);
     // One side for the whole table; a random side comes from the game's seed.
     const mode = this.setup.kind === 'room' ? this.config.sideMode : 'random';
     this.side = mode === 'random' ? (seed % 2 === 0 ? 'A' : 'B') : mode;
     const seats: SeatConfig[] = this.members.map((m) => ({
-      kind: m.kind,
+      // AI opponents look like players to everyone; the room plays them.
+      kind: m.kind === 'ai' ? 'human' : m.kind,
       name: m.name,
       side: this.side,
       ...(m.academyId ? { academyId: m.academyId } : {}),
@@ -512,24 +612,41 @@ export class Room {
     this.advance();
   }
 
+  /** After the game, anyone: the whole table goes back to the room's lobby (the host can change settings there). */
   private rematch(m: Member): void {
-    const host = this.members.find((x) => x.id === this.hostId);
-    // A host who is gone cannot block the rematch: any connected player may call it and becomes host.
-    if (m.id !== this.hostId && host?.conn) return this.fail(m.conn!, 'not_host', 'Only the host can do that');
-    if (this.phase !== 'game' || this.state?.phase !== 'ended') {
-      return this.fail(m.conn!, 'wrong_phase', 'The game has not ended');
-    }
+    if (!this.gameOver()) return this.fail(m.conn!, 'wrong_phase', 'The game has not ended');
+    this.toLobby();
+  }
+
+  /** Everyone back to the room's lobby; players who are gone are dropped. */
+  private toLobby(): void {
     this.clearTurnTimer();
+    this.clearAiTimers();
+    this.clearLobbyTimer();
     this.phase = 'lobby';
     this.state = null;
-    this.hostId = m.id === this.hostId || !host?.conn ? m.id : this.hostId;
     for (const x of [...this.members]) {
       x.botControlled = false;
+      x.left = false;
       x.engineSeat = -1;
       x.ready = false;
-      if (x.kind === 'human' && !x.conn) this.removeMember(x, 'removed');
+      if (x.kind === 'human' && !x.conn) {
+        this.clearGrace(x);
+        this.passHost(x);
+        this.members = this.members.filter((y) => y !== x);
+      }
     }
-    if (!this.closed) this.broadcast();
+    if (!this.members.some((x) => x.kind === 'human' && x.conn)) return this.close('left');
+    if (!this.members.some((x) => x.id === this.hostId)) this.hostId = this.members.find((x) => x.kind === 'human')!.id;
+    this.broadcast();
+  }
+
+  /** `m` is going: if it hosts, the next player round the table (connected first) becomes host. */
+  private passHost(m: Member): void {
+    if (this.hostId !== m.id) return;
+    const i = this.members.indexOf(m);
+    const order = [...this.members.slice(i + 1), ...this.members.slice(0, Math.max(i, 0))].filter((x) => x !== m && x.kind === 'human');
+    this.hostId = (order.find((x) => x.conn) ?? order[0])?.id ?? null;
   }
 
   private gameOver(): boolean {
@@ -566,9 +683,12 @@ export class Room {
    */
   private replay(): void {
     this.clearTurnTimer();
+    this.clearAiTimers();
+    this.clearLobbyTimer();
     for (const x of [...this.members]) {
       if (x.kind !== 'human' || x.conn) continue;
       this.clearGrace(x);
+      this.passHost(x);
       this.members = this.members.filter((y) => y !== x);
     }
     const humans = this.members.filter((x) => x.kind === 'human');
@@ -632,7 +752,10 @@ export class Room {
       if (p.pending) continue;
       if (p.config.kind === 'archmage') next = submitAction(next, seat, archmagePick(next, seat));
       else if (p.config.kind === 'bot') next = submitAction(next, seat, botPick(next, seat, p.config.botLevel ?? 'normal'));
-      else if (everyone || this.memberAt(seat)?.botControlled) next = submitAction(next, seat, botPick(next, seat, TAKEOVER_LEVEL));
+      else if (this.memberAt(seat)?.kind === 'ai') {
+        // Normally the AI picks after thinking (scheduleAi); at the turn deadline it picks at once.
+        if (everyone) next = submitAction(next, seat, botPick(next, seat, 'hard'));
+      } else if (everyone || this.memberAt(seat)?.botControlled) next = submitAction(next, seat, botPick(next, seat, TAKEOVER_LEVEL));
     }
     return next;
   }
@@ -647,9 +770,50 @@ export class Room {
       this.turnSeq++;
     }
     this.state = s;
-    if (s.phase === 'ended' && !this.recorded) this.record(s);
+    if (s.phase === 'ended' && !this.recorded) {
+      this.record(s);
+      this.armLobbyTimer();
+    }
     this.armTurnTimer();
     this.broadcast();
+    this.scheduleAi();
+  }
+
+  /** AI opponents choose now (Hard) but submit after a human-like think, within the turn timer. */
+  private scheduleAi(): void {
+    const s = this.state;
+    if (this.closed || !s || s.phase === 'ended') return this.clearAiTimers();
+    if (this.aiTurn !== this.turnSeq) {
+      this.clearAiTimers();
+      this.aiTurn = this.turnSeq;
+    }
+    const turn = this.turnSeq;
+    for (const seat of actingSeats(s)) {
+      if (this.memberAt(seat)?.kind !== 'ai' || s.players[seat].pending || this.aiTimers.has(seat)) continue;
+      const choice = hardChoose(s, seat);
+      const random = this.opts.random ?? Math.random;
+      let ms = aiThinkMs(choice.margin, random(), random());
+      if (this.deadline !== null) ms = Math.max(500, Math.min(ms, this.deadline - this.clock.now() - 1_500));
+      this.aiTimers.set(
+        seat,
+        this.clock.setTimer(ms, () => {
+          const now = this.state;
+          if (this.closed || !now || now.phase === 'ended' || this.turnSeq !== turn || now.players[seat].pending) return;
+          try {
+            this.state = submitAction(now, seat, choice.action);
+          } catch {
+            this.state = submitAction(now, seat, botPick(now, seat, 'hard'));
+          }
+          this.advance();
+        }),
+      );
+    }
+  }
+
+  private clearAiTimers(): void {
+    for (const t of this.aiTimers.values()) this.clock.clearTimer(t);
+    this.aiTimers.clear();
+    this.aiTurn = -1;
   }
 
   /** One result per account in the game (an account in two seats counts once). */
@@ -660,6 +824,19 @@ export class Room {
     const rivals = scores.filter((b) => s.players[b.seat].config.kind !== 'archmage');
     const won = new Set(winners(s));
     const coins = (seat: number) => s.players[seat].coins;
+    const ranked = this.setup.kind === 'ranked';
+    // Ranked: a player who left (or was still away at the end) is last, whatever the bot made of the seat.
+    const quit = (seat: number) => {
+      const x = this.memberAt(seat);
+      return ranked && x?.kind === 'human' && (!!x.left || x.botControlled);
+    };
+    const places = placesOf(
+      rivals.map((b) => ({ seat: b.seat, total: b.total, coins: coins(b.seat), quit: quit(b.seat) })),
+      ranked,
+    );
+    const aiRivals = this.members
+      .filter((x) => x.kind === 'ai' && places.has(x.engineSeat))
+      .map((x) => ({ place: places.get(x.engineSeat)!, offset: x.aiOffset ?? 0 }));
     const seen = new Set<string>();
     const records: GameRecord[] = [];
     for (const m of this.members) {
@@ -667,18 +844,46 @@ export class Room {
       seen.add(m.accountId);
       const mine = scores.find((b) => b.seat === m.engineSeat);
       if (!mine) continue;
-      const ahead = rivals.filter((b) => b.total > mine.total || (b.total === mine.total && coins(b.seat) > coins(mine.seat)));
       records.push({
         userId: m.accountId,
         academyId: s.players[m.engineSeat].academyId,
         score: mine.total,
-        place: 1 + ahead.length,
-        won: won.has(m.engineSeat),
+        place: places.get(m.engineSeat)!,
+        won: won.has(m.engineSeat) && !quit(m.engineSeat),
         players: this.members.length,
         playedAt: this.clock.now(),
         kind: this.setup.kind,
         ...(this.setup.queue ? { queue: this.setup.queue } : {}),
         side: this.side,
+        ...(ranked && aiRivals.length ? { aiRivals } : {}),
+      });
+    }
+    if (records.length) this.opts.onResults(records);
+  }
+
+  /** Every person left a ranked game mid-way: they all share last place behind the AI opponents (who draw). */
+  private recordForfeit(): void {
+    this.recorded = true;
+    if (!this.opts.onResults || !this.state) return;
+    const ai = this.members.filter((x) => x.kind === 'ai');
+    const aiRivals = ai.map((x) => ({ place: 1, offset: x.aiOffset ?? 0 }));
+    const seen = new Set<string>();
+    const records: GameRecord[] = [];
+    for (const m of this.members) {
+      if (m.kind !== 'human' || !m.accountId || seen.has(m.accountId)) continue;
+      seen.add(m.accountId);
+      records.push({
+        userId: m.accountId,
+        academyId: this.state.players[m.engineSeat].academyId,
+        score: 0,
+        place: ai.length + 1,
+        won: false,
+        players: this.members.length,
+        playedAt: this.clock.now(),
+        kind: 'ranked',
+        ...(this.setup.queue ? { queue: this.setup.queue } : {}),
+        side: this.side,
+        aiRivals,
       });
     }
     if (records.length) this.opts.onResults(records);
@@ -697,6 +902,24 @@ export class Room {
       this.state = this.autoPick(this.state, true);
       this.advance();
     });
+  }
+
+  /** Room games: not everyone tapped Play again in time, so the table goes back to the lobby. */
+  private armLobbyTimer(): void {
+    if (this.setup.kind !== 'room') return;
+    this.clearLobbyTimer();
+    this.lobbyAt = this.clock.now() + PLAY_AGAIN_MS;
+    this.lobbyTimer = this.clock.setTimer(PLAY_AGAIN_MS, () => {
+      this.lobbyTimer = null;
+      this.lobbyAt = null;
+      if (!this.closed && this.gameOver()) this.toLobby();
+    });
+  }
+
+  private clearLobbyTimer(): void {
+    if (this.lobbyTimer !== null) this.clock.clearTimer(this.lobbyTimer);
+    this.lobbyTimer = null;
+    this.lobbyAt = null;
   }
 
   private clearTurnTimer(): void {
@@ -726,7 +949,7 @@ export class Room {
       if (!m.conn) continue;
       const seat = m.engineSeat;
       const legal = s.players[seat].pending ? [] : legalActions(s, seat);
-      m.conn.send({ t: 'game', view: viewFor(s, seat), legal, seats, deadline: this.deadline, kind: this.setup.kind, ...(result ? { result } : {}), ...(reveal ? { reveal } : {}) });
+      m.conn.send({ t: 'game', view: viewFor(s, seat), legal, seats, deadline: this.deadline, kind: this.setup.kind, ...(this.setup.queue ? { queue: this.setup.queue } : {}), ...(result && this.lobbyAt !== null ? { lobbyAt: this.lobbyAt } : {}), ...(result ? { result } : {}), ...(reveal ? { reveal } : {}) });
     }
   }
 
@@ -742,11 +965,11 @@ export class Room {
       ...(this.quick ? { quick: true, startsAt: this.startsAt } : {}),
       seats: this.members.map((m) => ({
         id: m.id,
-        kind: m.kind,
+        kind: m.kind === 'ai' ? 'human' : m.kind,
         name: m.name,
         ...(m.kind === 'bot' ? { botLevel: m.botLevel } : {}),
         academyId: m.academyId,
-        connected: m.kind === 'bot' || !!m.conn,
+        connected: m.kind !== 'human' || !!m.conn,
         ...(m.username ? { username: m.username } : {}),
         ...(m.avatar ? { avatar: m.avatar } : {}),
       })),
@@ -761,7 +984,7 @@ export class Room {
         seat: p.seat,
         name: p.config.name,
         kind: p.config.kind,
-        connected: p.config.kind !== 'human' || !!m?.conn,
+        connected: p.config.kind !== 'human' || !!m?.conn || m?.kind === 'ai',
         botControlled: !!m?.botControlled,
         ...(m?.username ? { username: m.username } : {}),
         ...(m?.avatar ? { avatar: m.avatar } : {}),

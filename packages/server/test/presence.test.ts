@@ -187,16 +187,16 @@ describe('lobby presence', () => {
 });
 
 describe('rematch', () => {
-  it('returns everyone to the lobby after the game, host only', () => {
+  it('anyone can send everyone back to the lobby after the game', () => {
     const { room, conns } = started();
     const [a, b] = conns;
     room.handle(a, { t: 'rematch' });
     expect(a.lastError()).toBe('wrong_phase');
     playToEnd(room, conns);
     room.handle(b, { t: 'rematch' });
-    expect(b.lastError()).toBe('not_host');
-    room.handle(a, { t: 'rematch' });
+    expect(b.lastError()).toBeUndefined();
     expect(room.phase).toBe('lobby');
+    expect(a.last('lobby')!.lobby.hostId).toBe(a.last('joined')!.seatId);
     expect(b.last('lobby')!.lobby.seats.map((s) => s.name)).toEqual(['Ana', 'Bob', 'Bot 1']);
     room.handle(a, { t: 'start' });
     expect(a.last('game')!.view.turn).toBe(1);

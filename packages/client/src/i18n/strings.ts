@@ -362,6 +362,8 @@ export const en = {
   // play again and avatars
   playAgain: 'Play again',
   playAgainHint: 'Same table, same bots. Academies nobody picked are drawn again.',
+  playAgainQueue: 'Find another game in the same queue.',
+  toLobbyIn: 'Back to the lobby in {n} s unless everyone is ready.',
   notReady: 'Not yet',
   readyCount: '{n}/{total} ready',
   readyTag: 'Ready',

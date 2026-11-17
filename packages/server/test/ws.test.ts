@@ -8,7 +8,8 @@ let server: Running | null = null;
 const clients: TestClient[] = [];
 
 async function boot(manager: Partial<ManagerOptions> = {}) {
-  server = await startServer({ port: 0, host: '127.0.0.1', manager });
+  // Fixed seat order: the tests know who sits where.
+  server = await startServer({ port: 0, host: '127.0.0.1', manager: { shuffle: (xs) => xs, ...manager } });
   return server.port;
 }
 async function client(port: number) {

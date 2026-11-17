@@ -13,3 +13,5 @@ export { viewFor } from './view';
 export type { PlayerView, PublicPlayer } from './view';
 export { archmagePick } from './bots/archmage';
 export { botPick, autoPlay, cardValue } from './bots/bot';
+export { hardChoose } from './bots/hard';
+export type { HardChoice } from './bots/hard';

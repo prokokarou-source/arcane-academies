@@ -21,6 +21,7 @@ import {
   type Scope,
   type SocialMessage,
 } from '@arcane/protocol';
+import { aiProfile } from './aiProfiles';
 import { ratingDeltas } from './rating';
 import type { Clock } from './clock';
 import { hashPassword, hashToken, newRecoveryCode, newToken, verifyPassword } from './passwords';
@@ -244,6 +245,8 @@ export class Social {
   private async signup(conn: Conn, username: string, password: string): Promise<void> {
     if (!USERNAME_RE.test(username)) return this.fail(conn, 'bad_username');
     if (password.length < MIN_PASSWORD || password.length > MAX_PASSWORD) return this.fail(conn, 'bad_password');
+    // AI opponents' names are taken.
+    if (aiProfile(username)) return this.fail(conn, 'username_taken');
     const user = await this.store.createUser(username, await hashPassword(password));
     if (!user) return this.fail(conn, 'username_taken');
     await this.startSession(conn, user);
@@ -499,10 +502,15 @@ export class Social {
   /** Ranked (every record ranked in one queue, two or more accounts): pairwise Elo by place, kept with each record. */
   private async saveGame(records: GameRecord[]): Promise<void> {
     const queue = records[0]?.queue;
-    if (queue && records.length >= 2 && records.every((r) => r.kind === 'ranked' && r.queue === queue)) {
+    const ai = records[0]?.aiRivals ?? [];
+    if (queue && records.length + ai.length >= 2 && records.every((r) => r.kind === 'ranked' && r.queue === queue)) {
       const now = await this.store.ratings(queue, records.map((r) => r.userId));
-      const deltas = ratingDeltas(records.map((r) => ({ id: r.userId, rating: now.get(r.userId)?.rating ?? START_RATING, place: r.place })));
-      records = records.map((r) => ({ ...r, ratingDelta: deltas.get(r.userId) ?? 0 }));
+      const humans = records.map((r) => ({ id: r.userId, rating: now.get(r.userId)?.rating ?? START_RATING, place: r.place }));
+      // AI opponents are rated near the people at the table; their ratings are never stored.
+      const base = humans.reduce((sum, h) => sum + h.rating, 0) / humans.length;
+      const rivals = ai.map((a, i) => ({ id: `ai:${i}`, rating: Math.round(base + a.offset), place: a.place }));
+      const deltas = ratingDeltas([...humans, ...rivals]);
+      records = records.map(({ aiRivals: _ai, ...r }) => ({ ...r, ratingDelta: deltas.get(r.userId) ?? 0 }));
       await Promise.all(records.map((r) => this.store.addRating(r.userId, queue, r.ratingDelta ?? 0)));
     }
     await Promise.all(records.map((r) => this.store.recordResult(r)));
@@ -516,12 +524,36 @@ export class Social {
       id = me.id;
     } else {
       const found = await this.store.findUser(username);
+      const ai = found ? null : this.aiProfileOf(username);
+      if (ai) return conn.send({ t: 'profile', profile: ai });
       if (!found) return this.fail(conn, 'no_user');
       id = found.id;
     }
     const profile = await this.profile(id, me?.id ?? null);
     if (!profile) return this.fail(conn, 'no_user');
     conn.send({ t: 'profile', profile });
+  }
+
+  /** An AI opponent's profile: who it looks like, and nothing else. */
+  private aiProfileOf(username: string): Profile | null {
+    const ai = aiProfile(username);
+    if (!ai) return null;
+    // A stable "member since" a few months before launch day, different per profile.
+    let h = 0;
+    for (const ch of ai.username) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+    const memberSince = Date.UTC(2026, 5, 1) + (h % 120) * 86_400_000;
+    return {
+      username: ai.username,
+      avatar: ai.avatar,
+      country: ai.country,
+      memberSince,
+      me: false,
+      ranked: QUEUES.map((queue) => ({ queue, rating: null, division: divisionOf(null), rank: null, countryRank: null })),
+      totals: { games: 0, wins: 0, totalScore: 0, bestScore: 0, streak: 0, bestStreak: 0 },
+      byKind: { casual: { games: 0, wins: 0 }, ranked: { games: 0, wins: 0 } },
+      academies: [],
+      recent: [],
+    };
   }
 
   async profile(userId: string, viewerId: string | null): Promise<Profile | null> {

@@ -244,7 +244,7 @@ describe('quick match and blocks', () => {
   it('never seats two players kept apart at the same table', () => {
     const clock = new ManualClock(1_000_000);
     const apart = (x: Conn, y: Conn) => [x, y].map((c) => (c as FakeConn).label).sort().join() === 'Ana,Bob';
-    const mgr = new RoomManager({ clientUrl: 'http://client', seed: () => 7, quickStartMs: 10_000, apart }, clock);
+    const mgr = new RoomManager({ clientUrl: 'http://client', seed: () => 7, quickStartMs: 10_000, aiFillMs: null, apart }, clock);
     const queue = (name: string) => {
       const c = new FakeConn(name);
       mgr.onMessage(c, { t: 'queueJoin', kind: 'casual', queue: '1v1', name });

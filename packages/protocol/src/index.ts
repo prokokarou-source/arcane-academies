@@ -349,6 +349,8 @@ export type ReactionId = (typeof REACTIONS)[number];
 export const isReaction = (v: unknown): v is ReactionId => typeof v === 'string' && (REACTIONS as readonly string[]).includes(v);
 /** Per-seat limit: a burst of REACTION_BURST, then one more every REACTION_REFILL_MS. */
 export const REACTION_BURST = 3;
+/** After a room game: if not every player tapped Play again within this long, everyone goes back to the room's lobby (server epoch ms in `lobbyAt`). */
+export const PLAY_AGAIN_MS = 20_000;
 export const REACTION_REFILL_MS = 2_000;
 
 export type ClientMessage =
@@ -376,9 +378,9 @@ export type ClientMessage =
   | { t: 'settings'; settings: Partial<RoomSettings> }
   | { t: 'start' }
   | { t: 'act'; action: Action }
-  /** After the game, host only: back to the lobby to change seats. */
+  /** After a room game, anyone: everyone goes back to the room's lobby. */
   | { t: 'rematch' }
-  /** After the game: I want to play again with the same table (false: not any more). */
+  /** After a room game: I want to play again with the same table (false: not any more). */
   | { t: 'playAgain'; ready: boolean }
   /** After the game, host only: start the next game now with whoever is ready. */
   | { t: 'playAgainNow' }
@@ -444,7 +446,7 @@ export interface GameResult {
 export type ServerMessage =
   | { t: 'joined'; code: string; seatId: SeatId; token: string }
   | { t: 'lobby'; lobby: LobbyState }
-  | { t: 'game'; view: PlayerView; legal: Action[]; seats: SeatStatus[]; deadline: number | null; result?: GameResult; reveal?: GameReveal; kind?: 'casual' | 'ranked' | 'room' }
+  | { t: 'game'; view: PlayerView; legal: Action[]; seats: SeatStatus[]; deadline: number | null; result?: GameResult; reveal?: GameReveal; kind?: 'casual' | 'ranked' | 'room'; queue?: Queue; lobbyAt?: number }
   | { t: 'error'; code: ErrorCode; message: string }
   | { t: 'closed'; reason: CloseReason }
   /** Someone in the room reacted. `seat` is their engine seat during a game, else null. */

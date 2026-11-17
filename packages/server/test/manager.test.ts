@@ -7,7 +7,7 @@ const MIN = 60_000;
 
 function setup() {
   const clock = new ManualClock(1_000_000);
-  const mgr = new RoomManager({ clientUrl: 'http://client', idleMs: 30 * MIN, sweepMs: MIN }, clock);
+  const mgr = new RoomManager({ clientUrl: 'http://client', idleMs: 30 * MIN, sweepMs: MIN, shuffle: (xs) => xs }, clock);
   return { clock, mgr };
 }
 

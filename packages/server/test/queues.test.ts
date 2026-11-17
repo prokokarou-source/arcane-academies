@@ -12,7 +12,7 @@ function setup(opts: Partial<ManagerOptions> = {}) {
   const clock = new ManualClock(1_000_000);
   const records: GameRecord[][] = [];
   const mgr = new RoomManager(
-    { clientUrl: 'http://client', seed: () => 7, quickStartMs: 10 * SEC, onResults: (r) => records.push(r), ...opts },
+    { clientUrl: 'http://client', seed: () => 7, quickStartMs: 10 * SEC, aiFillMs: null, onResults: (r) => records.push(r), ...opts },
     clock,
   );
   const queue = (name: string, queue: Queue = '1v1', kind: QueueKind = 'casual') => {
@@ -141,6 +141,25 @@ describe('queues', () => {
     mgr.onMessage(b, { t: 'playAgain', ready: true });
     expect(b.lastError()).toBe('wrong_phase');
     expect(room.state!.phase).toBe('ended');
+  });
+
+  it('Play again after a queue game searches the same queue again, leaving the old table quietly', () => {
+    const { mgr, clock, queue } = setup();
+    const a = queue('Ana');
+    const b = queue('Bob');
+    clock.advance(10 * SEC);
+    const room = mgr.room(a.last('joined')!.code)!;
+    for (let i = 0; i < 5000 && room.state!.phase !== 'ended'; i++) {
+      const c = [a, b].find((x) => (x.last('game')?.legal.length ?? 0) > 0)!;
+      mgr.onMessage(c, { t: 'act', action: c.last('game')!.legal[0] });
+    }
+    mgr.onMessage(a, { t: 'queueJoin', kind: 'casual', queue: '1v1', name: 'Ana' });
+    expect(a.closedWith).toBeNull();
+    expect(mgr.codeOf(a)).toBeNull();
+    expect(a.last('queueState')).toMatchObject({ kind: 'casual', queue: '1v1', searching: 1 });
+    mgr.onMessage(b, { t: 'queueJoin', kind: 'casual', queue: '1v1', name: 'Bob' });
+    expect(b.last('joined')!.code).toBe(a.last('joined')!.code);
+    expect(b.last('joined')!.code).not.toBe(room.code);
   });
 
   it('queueLeave and disconnect remove a player; entering a room ends the search', () => {

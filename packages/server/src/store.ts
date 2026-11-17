@@ -53,7 +53,7 @@ export interface GameRecord {
   userId: string;
   academyId: string;
   score: number;
-  /** 1 = first; players with equal score and coins share a place. */
+  /** 1 = first. Ranked: equal score shares a place and leavers share last; other games split equal score by coins. */
   place: number;
   /** One of the winners (shared wins count). */
   won: boolean;
@@ -67,6 +67,8 @@ export interface GameRecord {
   queue?: Queue;
   /** The table's academy side. */
   side?: Side;
+  /** Ranked games with AI opponents: their places and rating offsets (rated against, never stored). */
+  aiRivals?: { place: number; offset: number }[];
   /** Ranked games: the rating change this game made (set when ratings are applied). */
   ratingDelta?: number;
 }

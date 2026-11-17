@@ -1,7 +1,8 @@
 import pg from 'pg';
-import { avatarKey, parseAvatarKey, type Avatar, type PushSub } from '@arcane/protocol';
-import type { FriendLink, FriendRow, GameRecord, Report, StatTotals, Store, StoredUser, User } from './store';
-import { MAX_PUSH_SUBS, NO_STATS, usernameKey, withAvatar } from './store';
+import { avatarKey, parseAvatarKey, START_RATING, type Avatar, type PushSub, type Queue } from '@arcane/protocol';
+import type { Account, BoardScope, FriendLink, FriendRow, GameRecord, ProfileStats, RankedRow, RatingRow, Report, StatTotals, Store, StoredUser, User } from './store';
+import { MAX_PUSH_SUBS, NO_STATS, sortAcademies, usernameKey, withAvatar } from './store';
+import { streaks } from './rating';
 
 /** Run on every start; each statement is safe to repeat. */
 const MIGRATIONS = [
@@ -67,7 +68,30 @@ const MIGRATIONS = [
   `create index if not exists reports_created on reports(created_at desc)`,
   // Avatar as "icon:color"; null = the default.
   `alter table users add column if not exists avatar text`,
+  // Ranked and profiles (additive): country, game kind/queue/side, rating change, ratings per queue.
+  `alter table users add column if not exists country text`,
+  `alter table game_results add column if not exists kind text`,
+  `alter table game_results add column if not exists queue text`,
+  `alter table game_results add column if not exists side text`,
+  `alter table game_results add column if not exists rating_delta integer`,
+  `create table if not exists ratings (
+     user_id bigint not null references users(id) on delete cascade,
+     queue text not null,
+     rating integer not null,
+     games integer not null default 0,
+     updated_at timestamptz not null default now(),
+     primary key (user_id, queue)
+   )`,
+  `create index if not exists ratings_board on ratings(queue, rating desc)`,
 ];
+
+/** Rated users of one queue in a scope, with rank() inside the scope. $1 queue, $2 ids or null, $3 countries or null. */
+const RANKED = `select u.id, u.username, u.username_key, u.avatar, u.country, r.rating, r.games,
+         rank() over (order by r.rating desc)::int as rank
+  from ratings r join users u on u.id = r.user_id
+  where r.queue = $1 and ($2::bigint[] is null or r.user_id = any($2::bigint[])) and ($3::text[] is null or u.country = any($3::text[]))`;
+
+const scopeParams = (s: BoardScope) => [s.userIds ?? null, s.countries ?? null];
 
 const user = (r: { id: string | number; username: string; avatar?: string | null }): User => ({
   id: String(r.id),
@@ -188,9 +212,9 @@ export class PgStore implements Store {
 
   async recordResult(r: GameRecord): Promise<void> {
     await this.q(
-      `insert into game_results (user_id, academy_id, score, place, won, players, played_at)
-       select $1, $2, $3, $4, $5, $6, to_timestamp($7 / 1000.0) where exists (select 1 from users where id = $1)`,
-      [r.userId, r.academyId, r.score, r.place, r.won, r.players, r.playedAt],
+      `insert into game_results (user_id, academy_id, score, place, won, players, played_at, kind, queue, side, rating_delta)
+       select $1, $2, $3, $4, $5, $6, to_timestamp($7 / 1000.0), $8, $9, $10, $11 where exists (select 1 from users where id = $1)`,
+      [r.userId, r.academyId, r.score, r.place, r.won, r.players, r.playedAt, r.kind ?? null, r.queue ?? null, r.side ?? null, r.ratingDelta ?? null],
     );
   }
 
@@ -209,7 +233,7 @@ export class PgStore implements Store {
 
   async history(userId: string, limit: number): Promise<GameRecord[]> {
     const r = await this.q(
-      `select academy_id, score, place, won, players, played_at from game_results
+      `select academy_id, score, place, won, players, played_at, kind, queue, side, rating_delta from game_results
        where user_id = $1 order by played_at desc, id desc limit $2`,
       [userId, limit],
     );
@@ -221,6 +245,10 @@ export class PgStore implements Store {
       won: row.won,
       players: row.players,
       playedAt: new Date(row.played_at).getTime(),
+      ...(row.kind ? { kind: row.kind } : {}),
+      ...(row.queue ? { queue: row.queue } : {}),
+      ...(row.side ? { side: row.side } : {}),
+      ...(row.rating_delta !== null ? { ratingDelta: row.rating_delta } : {}),
     }));
   }
 
@@ -306,5 +334,70 @@ export class PgStore implements Store {
 
   async setAvatar(userId: string, avatar: Avatar | null): Promise<void> {
     await this.q('update users set avatar = $2 where id = $1', [userId, avatar ? avatarKey(avatar) : null]);
+  }
+
+  async setCountry(userId: string, country: string | null): Promise<void> {
+    await this.q('update users set country = $2 where id = $1', [userId, country]);
+  }
+
+  async account(userId: string): Promise<Account | null> {
+    const r = await this.q('select id, username, avatar, country, created_at from users where id = $1', [userId]);
+    const row = r.rows[0];
+    return row ? { user: user(row), country: row.country ?? null, memberSince: new Date(row.created_at).getTime() } : null;
+  }
+
+  async ratings(queue: Queue, userIds: string[]): Promise<Map<string, RatingRow>> {
+    const out = new Map<string, RatingRow>();
+    if (!userIds.length) return out;
+    const r = await this.q('select user_id, rating, games from ratings where queue = $1 and user_id = any($2::bigint[])', [queue, userIds]);
+    for (const row of r.rows) out.set(String(row.user_id), { rating: row.rating, games: row.games });
+    return out;
+  }
+
+  async addRating(userId: string, queue: Queue, delta: number): Promise<void> {
+    await this.q(
+      `insert into ratings (user_id, queue, rating, games)
+       select $1, $2, $3::int + $4::int, 1 where exists (select 1 from users where id = $1)
+       on conflict (user_id, queue) do update set rating = ratings.rating + $4::int, games = ratings.games + 1, updated_at = now()`,
+      [userId, queue, START_RATING, delta],
+    );
+  }
+
+  async leaderboard(queue: Queue, scope: BoardScope, search: string | null, limit: number): Promise<RankedRow[]> {
+    const r = await this.q(
+      `select * from (${RANKED}) x where ($4::text is null or position($4::text in x.username_key) > 0)
+       order by x.rank, x.username_key limit $5`,
+      [queue, ...scopeParams(scope), search, limit],
+    );
+    return r.rows.map((row) => ({ user: user(row), country: row.country ?? null, rating: row.rating, games: row.games, rank: row.rank }));
+  }
+
+  async rankOf(queue: Queue, userId: string, scope: BoardScope): Promise<number | null> {
+    const r = await this.q(`select x.rank from (${RANKED}) x where x.id = $4`, [queue, ...scopeParams(scope), userId]);
+    return r.rows[0]?.rank ?? null;
+  }
+
+  async profileStats(userId: string): Promise<ProfileStats> {
+    const [kinds, academies, wins] = await Promise.all([
+      this.q(
+        `select count(*)::int as games, count(*) filter (where won)::int as wins,
+                coalesce(sum(score), 0)::int as total, coalesce(max(score), 0)::int as best,
+                count(*) filter (where kind = 'ranked')::int as r_games, count(*) filter (where kind = 'ranked' and won)::int as r_wins
+         from game_results where user_id = $1`,
+        [userId],
+      ),
+      this.q(
+        `select academy_id, count(*)::int as games, count(*) filter (where won)::int as wins
+         from game_results where user_id = $1 group by academy_id`,
+        [userId],
+      ),
+      this.q('select won from game_results where user_id = $1 order by played_at, id', [userId]),
+    ]);
+    const k = kinds.rows[0];
+    return {
+      totals: { games: k.games, wins: k.wins, totalScore: k.total, bestScore: k.best, ...streaks(wins.rows.map((row) => row.won)) },
+      byKind: { casual: { games: k.games - k.r_games, wins: k.wins - k.r_wins }, ranked: { games: k.r_games, wins: k.r_wins } },
+      academies: sortAcademies(academies.rows.map((row) => ({ academyId: row.academy_id, games: row.games, wins: row.wins }))),
+    };
   }
 }

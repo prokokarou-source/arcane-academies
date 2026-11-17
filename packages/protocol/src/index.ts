@@ -121,37 +121,95 @@ export interface FriendList {
   outgoing: string[];
 }
 
-/** One finished game in my history. */
-export interface GameSummary {
+export type Side = 'A' | 'B';
+/** Ranked and casual queues; 1v1 = two humans plus the Rival Archmage. */
+export type Queue = '1v1' | '3-5' | '6-7';
+export const QUEUES: readonly Queue[] = ['1v1', '3-5', '6-7'];
+/** 'room' = a host-made room; 'bots' = solo against bots. */
+export type GameKind = 'bots' | 'casual' | 'ranked' | 'room';
+export const GAME_KINDS: readonly GameKind[] = ['bots', 'casual', 'ranked', 'room'];
+export type Division = 'apprentice' | 'adept' | 'magister' | 'archmage';
+/** Leaderboard scopes; continent and country follow my own account's country. */
+export type Scope = 'friends' | 'global' | 'continent' | 'country';
+export const SCOPES: readonly Scope[] = ['friends', 'global', 'continent', 'country'];
+
+/** Every ranked rating starts here. */
+export const START_RATING = 1000;
+/** Rating bands: <1100 apprentice, 1100–1299 adept, 1300–1499 magister, >=1500 archmage. No rating yet = apprentice. */
+export function divisionOf(rating: number | null): Division {
+  if (rating === null || rating < 1100) return 'apprentice';
+  if (rating < 1300) return 'adept';
+  if (rating < 1500) return 'magister';
+  return 'archmage';
+}
+
+export type Continent = 'africa' | 'antarctica' | 'asia' | 'europe' | 'north-america' | 'oceania' | 'south-america';
+const CONTINENT_CODES: Record<Continent, string> = {
+  africa:
+    'DZ AO BJ BW BF BI CV CM CF TD KM CG CD CI DJ EG GQ ER SZ ET GA GM GH GN GW KE LS LR LY MG MW ML MR MU YT MA MZ NA NE NG RE RW SH ST SN SC SL SO ZA SS SD TZ TG TN UG EH ZM ZW',
+  antarctica: 'AQ BV GS HM TF',
+  asia: 'AF AM AZ BH BD BT BN KH CN GE HK IN ID IR IQ IL JP JO KZ KW KG LA LB MO MY MV MN MM NP KP OM PK PS PH QA SA SG KR LK SY TW TJ TH TL TR TM AE UZ VN YE IO',
+  europe:
+    'AL AD AT BY BE BA BG HR CY CZ DK EE FO FI FR DE GI GR GG HU IS IE IM IT JE LV LI LT LU MT MD MC ME NL MK NO PL PT RO RU SM RS SK SI ES SJ SE CH UA GB VA AX',
+  'north-america':
+    'AI AG AW BS BB BZ BM BQ VG CA KY CR CU CW DM DO SV GL GD GP GT HT HN JM MQ MX MS NI PA PR BL KN LC MF PM VC SX TT TC US VI',
+  oceania: 'AS AU CK FJ PF GU KI MH FM NR NC NZ NU NF MP PW PG PN WS SB TK TO TV VU WF CX CC UM',
+  'south-america': 'AR BO BR CL CO EC FK GF GY PY PE SR UY VE',
+};
+/** ISO 3166-1 alpha-2 country code → continent (static; the server and the client agree on it). */
+export const COUNTRY_CONTINENT: Readonly<Record<string, Continent>> = Object.fromEntries(
+  (Object.entries(CONTINENT_CODES) as [Continent, string][]).flatMap(([c, codes]) => codes.split(' ').map((code) => [code, c])),
+);
+export const isCountry = (v: unknown): v is string => typeof v === 'string' && Object.hasOwn(COUNTRY_CONTINENT, v);
+export const continentOf = (country: string | null | undefined): Continent | null =>
+  country && isCountry(country) ? COUNTRY_CONTINENT[country] : null;
+export const countriesIn = (c: Continent): string[] => CONTINENT_CODES[c].split(' ');
+
+/** One leaderboard row. `rank` and `rating` are null before a first ranked game in that queue. */
+export interface LeaderRow {
+  rank: number | null;
+  username: string;
+  country: string | null;
+  avatar?: Avatar;
+  division: Division;
+  rating: number | null;
+  games: number;
+}
+export const LEADERBOARD_SIZE = 100;
+export const MAX_SEARCH = 20;
+
+/** One finished game in a profile's recent list. */
+export interface RecentGame {
   /** Epoch ms. */
   at: number;
+  kind: GameKind;
+  queue?: Queue;
   academyId: string;
-  score: number;
+  side: Side;
   /** 1 = first (shared on a tie). */
   place: number;
-  won: boolean;
+  score: number;
   /** Seats in the game, bots included. */
   players: number;
+  /** Ranked games: my rating change. */
+  ratingDelta?: number;
 }
 
 export interface Profile {
   username: string;
   avatar?: Avatar;
-  games: number;
-  wins: number;
-  totalScore: number;
-  bestScore: number;
-  /** The last games, newest first. */
-  recent: GameSummary[];
-}
-
-/** One row of the friends leaderboard (me and my accepted friends), best first. */
-export interface LeaderRow {
-  username: string;
-  games: number;
-  wins: number;
+  country: string | null;
+  /** Epoch ms of signup. */
+  memberSince: number;
+  /** True for my own profile (others are read-only). */
   me: boolean;
-  avatar?: Avatar;
+  ranked: { queue: Queue; rating: number | null; division: Division; rank: number | null; countryRank: number | null }[];
+  totals: { games: number; wins: number; totalScore: number; bestScore: number; streak: number; bestStreak: number };
+  /** Bot and room games count as casual. */
+  byKind: { casual: { games: number; wins: number }; ranked: { games: number; wins: number } };
+  academies: { academyId: string; games: number; wins: number }[];
+  /** The last games, newest first. */
+  recent: RecentGame[];
 }
 
 export const PROFILE_HISTORY = 10;
@@ -186,8 +244,12 @@ export type SocialMessage =
   | { t: 'friendRemove'; username: string }
   /** Invite an online friend to the room I am in. */
   | { t: 'invite'; username: string }
-  | { t: 'profile' }
-  | { t: 'leaderboard' }
+  /** My profile, or another player's (read-only) by username. */
+  | { t: 'profile'; username?: string }
+  /** Top rows of a ranked queue in a scope, optionally filtered by a username search. */
+  | { t: 'leaderboard'; queue: Queue; scope: Scope; search?: string }
+  /** My country (ISO 3166-1 alpha-2), or null to clear it. */
+  | { t: 'setCountry'; country: string | null }
   | { t: 'changePassword'; current: string; next: string }
   /** End every login of my account, this one included. */
   | { t: 'logoutAll' }
@@ -231,6 +293,7 @@ export const SOCIAL_TYPES: readonly SocialMessage['t'][] = [
   'recover',
   'createRecoveryCode',
   'setAvatar',
+  'setCountry',
 ];
 
 export const isSocialMessage = (m: ClientMessage): m is SocialMessage => (SOCIAL_TYPES as readonly string[]).includes(m.t);
@@ -346,7 +409,8 @@ export type ServerMessage =
   /** I left the queue without a match (cancelled). */
   | { t: 'quickCancelled' }
   | { t: 'profile'; profile: Profile }
-  | { t: 'leaderboard'; rows: LeaderRow[] }
+  /** `me` is my own row (rank/rating null before my first ranked game); null for guests. */
+  | { t: 'leaderboard'; queue: Queue; scope: Scope; rows: LeaderRow[]; me: LeaderRow | null }
   | { t: 'passwordChanged' }
   /** The server's VAPID public key after login; null when push notifications are off on the server. */
   | { t: 'pushKey'; key: string | null }
@@ -448,9 +512,23 @@ function parseObj(m: Obj): ClientMessage | null {
       return isStr(m.token, 128) ? { t: 'auth', token: m.token } : null;
     case 'logout':
     case 'logoutAll':
-    case 'profile':
-    case 'leaderboard':
       return { t: m.t };
+    case 'profile':
+      if (m.username === undefined) return { t: 'profile' };
+      return isUser(m.username) ? { t: 'profile', username: m.username } : null;
+    case 'leaderboard': {
+      if (!(QUEUES as readonly unknown[]).includes(m.queue) || !(SCOPES as readonly unknown[]).includes(m.scope)) return null;
+      const out: Extract<ClientMessage, { t: 'leaderboard' }> = { t: 'leaderboard', queue: m.queue as Queue, scope: m.scope as Scope };
+      if (m.search !== undefined) {
+        if (typeof m.search !== 'string' || m.search.length > 64) return null;
+        const q = m.search.trim().slice(0, MAX_SEARCH);
+        if (q) out.search = q;
+      }
+      return out;
+    }
+    case 'setCountry':
+      if (m.country === null) return { t: 'setCountry', country: null };
+      return isCountry(m.country) ? { t: 'setCountry', country: m.country } : null;
     case 'changePassword':
       return isPass(m.current) && isPass(m.next) ? { t: 'changePassword', current: m.current, next: m.next } : null;
     case 'deleteAccount':

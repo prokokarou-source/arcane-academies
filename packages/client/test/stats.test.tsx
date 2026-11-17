@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { Profile } from '@arcane/protocol';
+import type { LeaderRow, Profile } from '@arcane/protocol';
 import { harness } from './fakeSocket';
 import { renderApp } from './render';
 
@@ -8,12 +8,23 @@ afterEach(cleanup);
 
 const profile: Profile = {
   username: 'Ana',
-  games: 4,
-  wins: 1,
-  totalScore: 170,
-  bestScore: 52,
-  recent: [{ at: Date.UTC(2026, 10, 15), academyId: 'nope', score: 52, place: 1, won: true, players: 3 }],
+  country: null,
+  memberSince: 0,
+  me: true,
+  ranked: [],
+  totals: { games: 4, wins: 1, totalScore: 170, bestScore: 52, streak: 0, bestStreak: 1 },
+  byKind: { casual: { games: 4, wins: 1 }, ranked: { games: 0, wins: 0 } },
+  academies: [],
+  recent: [{ at: Date.UTC(2026, 10, 15), kind: 'casual', academyId: 'nope', side: 'A', score: 52, place: 1, players: 3 }],
 };
+const row = (username: string, rank: number, rating: number, games: number): LeaderRow => ({
+  rank,
+  username,
+  country: null,
+  division: 'apprentice',
+  rating,
+  games,
+});
 
 /** Log in and open the Account screen. */
 function accountScreen() {
@@ -31,9 +42,9 @@ describe('stats client', () => {
     h.sock().receive({ t: 'account', username: 'Ana' });
     h.client.requestProfile();
     h.client.requestLeaderboard();
-    expect(h.sock().sent).toEqual([{ t: 'profile' }, { t: 'leaderboard' }]);
+    expect(h.sock().sent).toEqual([{ t: 'profile' }, { t: 'leaderboard', queue: '1v1', scope: 'friends' }]);
     h.sock().receive({ t: 'profile', profile });
-    h.sock().receive({ t: 'leaderboard', rows: [{ username: 'Ana', games: 4, wins: 1, me: true }] });
+    h.sock().receive({ t: 'leaderboard', queue: '1v1', scope: 'friends', rows: [row('Ana', 1, 1016, 1)], me: row('Ana', 1, 1016, 1) });
     h.client.changePassword('secret1', 'secret2');
     expect(h.client.getState().accountPending).toBe(true);
     h.sock().receive({ t: 'passwordChanged' });
@@ -77,7 +88,7 @@ describe('profile screen', () => {
   it('says so when there are no games yet', () => {
     const h = accountScreen();
     fireEvent.click(screen.getByRole('button', { name: 'Profile' }));
-    act(() => h.sock().receive({ t: 'profile', profile: { ...profile, games: 0, wins: 0, totalScore: 0, bestScore: 0, recent: [] } }));
+    act(() => h.sock().receive({ t: 'profile', profile: { ...profile, totals: { ...profile.totals, games: 0, wins: 0, totalScore: 0, bestScore: 0 }, recent: [] } }));
     expect(screen.getByText(/No games yet/)).toBeTruthy();
   });
 });
@@ -91,20 +102,20 @@ describe('leaderboard tab', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: /Friends · 1 online/ }));
     fireEvent.click(screen.getByRole('tab', { name: 'Leaderboard' }));
-    expect(h.sock().sent).toContainEqual({ t: 'leaderboard' });
+    expect(h.sock().sent).toContainEqual({ t: 'leaderboard', queue: '1v1', scope: 'friends' });
     act(() =>
       h.sock().receive({
         t: 'leaderboard',
-        rows: [
-          { username: 'Bob', games: 2, wins: 2, me: false },
-          { username: 'Ana', games: 4, wins: 1, me: true },
-        ],
+        queue: '1v1',
+        scope: 'friends',
+        rows: [row('Bob', 1, 1030, 2), row('Ana', 2, 984, 4)],
+        me: row('Ana', 2, 984, 4),
       }),
     );
     const items = within(screen.getByRole('list', { name: 'Leaderboard' })).getAllByRole('listitem');
     expect(items.map((li) => li.textContent)).toEqual([
-      expect.stringMatching(/^1Bob.*Wins: 2.*100%/),
-      expect.stringMatching(/^2Ana \(You\).*Wins: 1.*25%/),
+      expect.stringMatching(/^1Bob.*1030.*Games: 2/),
+      expect.stringMatching(/^2Ana \(You\).*984.*Games: 4/),
     ]);
     fireEvent.click(screen.getByRole('tab', { name: 'Friend list' }));
     expect(screen.getByRole('button', { name: 'Add friend' })).toBeTruthy();

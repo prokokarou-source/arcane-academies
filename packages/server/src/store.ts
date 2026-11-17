@@ -1,4 +1,5 @@
-import type { Avatar, PushSub, ReportReason } from '@arcane/protocol';
+import { START_RATING, type Avatar, type GameKind, type PushSub, type Queue, type ReportReason, type Side } from '@arcane/protocol';
+import { streaks } from './rating';
 
 /**
  * Where accounts, login sessions and friendships live.
@@ -60,6 +61,57 @@ export interface GameRecord {
   players: number;
   /** Epoch ms. */
   playedAt: number;
+  /** What kind of game; absent on old records (read as casual). */
+  kind?: GameKind;
+  /** Casual and ranked queue games. */
+  queue?: Queue;
+  /** The table's academy side. */
+  side?: Side;
+  /** Ranked games: the rating change this game made (set when ratings are applied). */
+  ratingDelta?: number;
+}
+
+/** Account details shown on a profile. */
+export interface Account {
+  user: User;
+  /** ISO 3166-1 alpha-2, or null when not set. */
+  country: string | null;
+  /** Epoch ms of signup. */
+  memberSince: number;
+}
+
+export interface RatingRow {
+  rating: number;
+  /** Ranked games played in this queue. */
+  games: number;
+}
+
+/** Who a leaderboard covers: given ids only, given countries only, or (empty) everyone. */
+export interface BoardScope {
+  userIds?: string[];
+  countries?: string[];
+}
+
+export interface RankedRow {
+  user: User;
+  country: string | null;
+  rating: number;
+  games: number;
+  /** 1 = best in the scope; equal ratings share a rank. */
+  rank: number;
+}
+
+export interface WinCount {
+  games: number;
+  wins: number;
+}
+
+export interface ProfileStats {
+  totals: StatTotals & { streak: number; bestStreak: number };
+  /** Everything not ranked (bots, rooms, casual queues, old records) is casual. */
+  byKind: { casual: WinCount; ranked: WinCount };
+  /** Most played first. */
+  academies: (WinCount & { academyId: string })[];
 }
 
 export interface StatTotals {
@@ -118,7 +170,22 @@ export interface Store {
   recentReports(limit: number): Promise<Report[]>;
   /** Null resets to the default avatar. */
   setAvatar(userId: string, avatar: Avatar | null): Promise<void>;
+  /** ISO country code (checked by the caller), or null to clear. */
+  setCountry(userId: string, country: string | null): Promise<void>;
+  account(userId: string): Promise<Account | null>;
+  /** Ratings in one queue for the users that have played it. */
+  ratings(queue: Queue, userIds: string[]): Promise<Map<string, RatingRow>>;
+  /** Add one ranked game's change (starting from START_RATING); ignored when the user no longer exists. */
+  addRating(userId: string, queue: Queue, delta: number): Promise<void>;
+  /** Rated players in the scope, best first; `search` (lower case) filters usernames but keeps the scope ranks. */
+  leaderboard(queue: Queue, scope: BoardScope, search: string | null, limit: number): Promise<RankedRow[]>;
+  /** The user's rank in the scope, or null when unrated there. */
+  rankOf(queue: Queue, userId: string, scope: BoardScope): Promise<number | null>;
+  profileStats(userId: string): Promise<ProfileStats>;
 }
+
+export const sortAcademies = <T extends WinCount & { academyId: string }>(rows: T[]) =>
+  rows.sort((a, b) => b.games - a.games || b.wins - a.wins || a.academyId.localeCompare(b.academyId));
 
 /** Devices kept per user; the oldest is dropped beyond this. */
 export const MAX_PUSH_SUBS = 10;
@@ -138,7 +205,12 @@ export class MemoryStore implements Store {
   private push = new Map<string, { userId: string; sub: PushSub }>();
   private blockRows: { blocker: string; blocked: string }[] = [];
   private reports: Report[] = [];
+  private extra = new Map<string, { country: string | null; createdAt: number }>();
+  /** `${userId}|${queue}` → rating. */
+  private ratingRows = new Map<string, RatingRow & { userId: string; queue: Queue }>();
   private nextId = 1;
+
+  constructor(private readonly now: () => number = Date.now) {}
 
   async init(): Promise<void> {}
   async close(): Promise<void> {}
@@ -149,6 +221,7 @@ export class MemoryStore implements Store {
     const u: StoredUser = { id: String(this.nextId++), username, passHash, recoveryHash: null };
     this.users.set(u.id, u);
     this.byKey.set(key, u.id);
+    this.extra.set(u.id, { country: null, createdAt: this.now() });
     return { id: u.id, username };
   }
 
@@ -218,6 +291,8 @@ export class MemoryStore implements Store {
     this.results = this.results.filter((r) => r.userId !== userId);
     for (const [e, x] of this.push) if (x.userId === userId) this.push.delete(e);
     this.blockRows = this.blockRows.filter((b) => b.blocker !== userId && b.blocked !== userId);
+    this.extra.delete(userId);
+    for (const [k, r] of this.ratingRows) if (r.userId === userId) this.ratingRows.delete(k);
   }
 
   async recordResult(r: GameRecord): Promise<void> {
@@ -303,5 +378,79 @@ export class MemoryStore implements Store {
   async setAvatar(userId: string, avatar: Avatar | null): Promise<void> {
     const u = this.users.get(userId);
     if (u) u.avatar = avatar ? { ...avatar } : null;
+  }
+
+  async setCountry(userId: string, country: string | null): Promise<void> {
+    const x = this.extra.get(userId);
+    if (x) x.country = country;
+  }
+
+  async account(userId: string): Promise<Account | null> {
+    const u = this.users.get(userId);
+    const x = this.extra.get(userId);
+    return u && x ? { user: this.pub(u), country: x.country, memberSince: x.createdAt } : null;
+  }
+
+  async ratings(queue: Queue, userIds: string[]): Promise<Map<string, RatingRow>> {
+    const out = new Map<string, RatingRow>();
+    for (const id of userIds) {
+      const r = this.ratingRows.get(`${id}|${queue}`);
+      if (r) out.set(id, { rating: r.rating, games: r.games });
+    }
+    return out;
+  }
+
+  async addRating(userId: string, queue: Queue, delta: number): Promise<void> {
+    if (!this.users.has(userId)) return;
+    const k = `${userId}|${queue}`;
+    const r = this.ratingRows.get(k) ?? { userId, queue, rating: START_RATING, games: 0 };
+    this.ratingRows.set(k, { ...r, rating: r.rating + delta, games: r.games + 1 });
+  }
+
+  /** Every rated user in the scope with their rank (rank() semantics: ties share, gaps follow). */
+  private ranked(queue: Queue, scope: BoardScope): RankedRow[] {
+    const rows = [...this.ratingRows.values()]
+      .filter((r) => r.queue === queue)
+      .filter((r) => !scope.userIds || scope.userIds.includes(r.userId))
+      .map((r) => ({ r, x: this.extra.get(r.userId)!, u: this.users.get(r.userId)! }))
+      .filter(({ x }) => !scope.countries || (x.country !== null && scope.countries.includes(x.country)))
+      .sort((a, b) => b.r.rating - a.r.rating || usernameKey(a.u.username).localeCompare(usernameKey(b.u.username)));
+    return rows.map(({ r, x, u }) => ({
+      user: this.pub(u),
+      country: x.country,
+      rating: r.rating,
+      games: r.games,
+      rank: 1 + rows.filter((o) => o.r.rating > r.rating).length,
+    }));
+  }
+
+  async leaderboard(queue: Queue, scope: BoardScope, search: string | null, limit: number): Promise<RankedRow[]> {
+    return this.ranked(queue, scope)
+      .filter((r) => !search || usernameKey(r.user.username).includes(search))
+      .slice(0, limit);
+  }
+
+  async rankOf(queue: Queue, userId: string, scope: BoardScope): Promise<number | null> {
+    return this.ranked(queue, scope).find((r) => r.user.id === userId)?.rank ?? null;
+  }
+
+  async profileStats(userId: string): Promise<ProfileStats> {
+    const mine = this.results
+      .map((r, i) => ({ r, i }))
+      .filter((x) => x.r.userId === userId)
+      .sort((a, b) => a.r.playedAt - b.r.playedAt || a.i - b.i)
+      .map((x) => x.r);
+    const totals = (await this.totals([userId])).get(userId)!;
+    const count = (rs: GameRecord[]): WinCount => ({ games: rs.length, wins: rs.filter((r) => r.won).length });
+    const ids = [...new Set(mine.map((r) => r.academyId))];
+    return {
+      totals: { ...totals, ...streaks(mine.map((r) => r.won)) },
+      byKind: { casual: count(mine.filter((r) => r.kind !== 'ranked')), ranked: count(mine.filter((r) => r.kind === 'ranked')) },
+      academies: sortAcademies(ids.map((academyId) => ({ academyId, ...count(mine.filter((r) => r.academyId === academyId)) }))),
+    };
+  }
+
+  private pub(u: StoredUser): User {
+    return { id: u.id, username: u.username, ...withAvatar(u.avatar) };
   }
 }

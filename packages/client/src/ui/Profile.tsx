@@ -12,7 +12,8 @@ export function Profile(props: { onBack(): void }) {
   const t = useT();
   const { profile, account, avatar } = useClientState();
   useEffect(() => client.requestProfile(), [client]);
-  const p = profile?.username === account ? profile : null;
+  const mine = profile?.username === account ? profile : null;
+  const p = mine && { ...mine.totals, recent: mine.recent };
 
   return (
     <main className="screen">
@@ -54,7 +55,7 @@ export function Profile(props: { onBack(): void }) {
               <li key={`${g.at}-${i}`} className="seat">
                 <div className="seat-top">
                   <span className="name">{academyName(g.academyId)}</span>
-                  {g.won && <span className="tag">{t('winTag')}</span>}
+                  {g.place === 1 && <span className="tag">{t('winTag')}</span>}
                   <span className="pts">{t('points', { n: g.score })}</span>
                 </div>
                 <div className="seat-sub">

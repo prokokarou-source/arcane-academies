@@ -155,27 +155,26 @@ export function Friends(props: { onBack(): void; onAccount(): void }) {
   );
 }
 
-const winRate = (r: LeaderRow) => (r.games ? Math.round((100 * r.wins) / r.games) : 0);
-
-/** Me and my friends, ranked by wins (then win rate) on the server. */
+/** Me and my rated friends in the 1v1 ranked queue, best rating first (interim until the Leaderboards tab). */
 function Leaderboard() {
   const client = useClient();
   const t = useT();
-  const { leaderboard, friends } = useClientState();
+  const { leaderboard, friends, account } = useClientState();
+  const isMe = (r: LeaderRow) => r.username === account;
   // Fetch when opened and again whenever the friend list changes.
   useEffect(() => client.requestLeaderboard(), [client, friends]);
   if (!leaderboard) return <p className="status loading">{t('loadingStats')}</p>;
   return (
     <ol className="seats" aria-label={t('leaderboard')}>
-      {leaderboard.map((r, i) => (
-        <li key={r.username} className={`seat${r.me ? ' lb-me' : ''}`}>
+      {leaderboard.map((r) => (
+        <li key={r.username} className={`seat${isMe(r) ? ' lb-me' : ''}`}>
           <div className="seat-top">
-            <span className="rank">{i + 1}</span>
+            <span className="rank">{r.rank ?? '–'}</span>
             <AvatarGlyph avatar={r.avatar} size={24} />
-            <span className="name">{r.me ? `${r.username} (${t('you')})` : r.username}</span>
+            <span className="name">{isMe(r) ? `${r.username} (${t('you')})` : r.username}</span>
             <span className="lb-stats">
-              <span className="small">{`${t('statWins')}: ${r.wins}`}</span>
-              <span className="muted small">{`${winRate(r)}% · ${t('statGames')}: ${r.games}`}</span>
+              <span className="small">{r.rating ?? '–'}</span>
+              <span className="muted small">{`${t('statGames')}: ${r.games}`}</span>
             </span>
           </div>
         </li>

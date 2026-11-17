@@ -667,8 +667,9 @@ export class GameClient {
     this.send({ t: 'profile' });
   }
 
+  /** Interim until the new Leaderboards tab: the friends board of the 1v1 ranked queue. */
   requestLeaderboard(): void {
-    this.send({ t: 'leaderboard' });
+    this.send({ t: 'leaderboard', queue: '1v1', scope: 'friends' });
   }
 
   changePassword(current: string, next: string): void {

@@ -78,10 +78,13 @@ describe('avatars next to names', () => {
     act(() =>
       h.sock().receive({
         t: 'leaderboard',
+        queue: '1v1',
+        scope: 'friends',
         rows: [
-          { username: 'Bob', games: 2, wins: 1, me: false, avatar: { icon: 'wave', color: 'azure' } },
-          { username: 'Ana', games: 1, wins: 0, me: true },
+          { rank: 1, username: 'Bob', country: null, division: 'apprentice', rating: 1016, games: 1, avatar: { icon: 'wave', color: 'azure' } },
+          { rank: 2, username: 'Ana', country: null, division: 'apprentice', rating: 984, games: 1 },
         ],
+        me: null,
       }),
     );
     const rows = [...screen.getByRole('list', { name: 'Leaderboard' }).querySelectorAll('li')];

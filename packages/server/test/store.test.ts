@@ -191,6 +191,103 @@ function contract(name: string, make: () => Store) {
       await store.setAvatar(av.id, null);
       expect(await store.sessionUser(tok)).toEqual({ id: av.id, username: n('Av') });
     });
+
+    it('keeps a country and the signup time on the account', async () => {
+      const before = Date.now() - 60_000;
+      const co = (await store.createUser(n('Co'), 'h'))!;
+      const acc = (await store.account(co.id))!;
+      expect(acc).toEqual({ user: co, country: null, memberSince: expect.any(Number) });
+      expect(acc.memberSince).toBeGreaterThan(before);
+      await store.setCountry(co.id, 'GR');
+      expect((await store.account(co.id))!.country).toBe('GR');
+      await store.setCountry(co.id, null);
+      expect((await store.account(co.id))!.country).toBeNull();
+      expect(await store.account('999999999')).toBeNull();
+    });
+
+    it('stores kind, queue, side and rating change with a result; old-style records read without them', async () => {
+      const ki = (await store.createUser(n('Ki'), 'h'))!;
+      const base = { userId: ki.id, academyId: 'ember', score: 50, place: 1, won: true, players: 3 };
+      await store.recordResult({ ...base, playedAt: 1_000, kind: 'ranked', queue: '1v1', side: 'B', ratingDelta: -7 });
+      await store.recordResult({ ...base, playedAt: 2_000 });
+      const [plain, ranked] = await store.history(ki.id, 5);
+      expect(plain).toEqual({ ...base, playedAt: 2_000 });
+      expect(ranked).toEqual({ ...base, playedAt: 1_000, kind: 'ranked', queue: '1v1', side: 'B', ratingDelta: -7 });
+    });
+
+    it('keeps ratings per queue from 1000 and ranks them inside a scope; search keeps the scope ranks', async () => {
+      const [ra, rb, rc, rd] = await Promise.all(['Qa', 'Qb', 'Qc', 'Qd'].map(async (x) => (await store.createUser(n(x), 'h'))!));
+      await store.addRating(ra.id, '3-5', 40);
+      await store.addRating(ra.id, '3-5', -10);
+      await store.addRating(rb.id, '3-5', 30);
+      await store.addRating(rc.id, '3-5', -5);
+      await store.addRating(rc.id, '1v1', 16);
+      await store.addRating('999999999', '3-5', 10); // gone users are ignored
+      await store.setCountry(ra.id, 'GR');
+      await store.setCountry(rb.id, 'GR');
+      await store.setCountry(rc.id, 'FR');
+      const r = await store.ratings('3-5', [ra.id, rb.id, rc.id, rd.id]);
+      expect(r.get(ra.id)).toEqual({ rating: 1030, games: 2 });
+      expect(r.get(rb.id)).toEqual({ rating: 1030, games: 1 });
+      expect(r.has(rd.id)).toBe(false);
+      expect((await store.ratings('1v1', [rc.id])).get(rc.id)).toEqual({ rating: 1016, games: 1 });
+
+      const scope = { userIds: [ra.id, rb.id, rc.id, rd.id] };
+      const board = await store.leaderboard('3-5', scope, null, 10);
+      // Equal ratings share rank 1; then a gap.
+      expect(board.map((x) => [x.user.username, x.rank, x.rating])).toEqual([
+        [n('Qa'), 1, 1030],
+        [n('Qb'), 1, 1030],
+        [n('Qc'), 3, 995],
+      ]);
+      expect(board[0]).toEqual({ user: ra, country: 'GR', rating: 1030, games: 2, rank: 1 });
+      expect((await store.leaderboard('3-5', scope, null, 1)).length).toBe(1);
+      const found = await store.leaderboard('3-5', scope, 'qc_', 10);
+      expect(found.map((x) => [x.user.username, x.rank])).toEqual([[n('Qc'), 3]]);
+      expect(await store.rankOf('3-5', rc.id, scope)).toBe(3);
+      expect(await store.rankOf('3-5', rd.id, scope)).toBeNull();
+      expect(await store.rankOf('6-7', ra.id, scope)).toBeNull();
+      // Country scope combines with ids here so other data in a shared database cannot interfere.
+      expect(await store.rankOf('3-5', rc.id, { ...scope, countries: ['FR'] })).toBe(1);
+      expect((await store.leaderboard('3-5', { ...scope, countries: ['GR', 'DE'] }, null, 10)).map((x) => x.user.id)).toEqual([ra.id, rb.id]);
+      // Global search finds by name part, case-insensitive.
+      const global = await store.leaderboard('3-5', {}, `qb_${uniq}`.toLowerCase(), 10);
+      expect(global.map((x) => x.user.id)).toEqual([rb.id]);
+      expect(global[0].rank).toBeGreaterThanOrEqual(1);
+
+      await store.deleteUser(ra.id);
+      expect((await store.ratings('3-5', [ra.id])).size).toBe(0);
+    });
+
+    it('sums profile stats: streaks, casual vs ranked, academies', async () => {
+      const ps = (await store.createUser(n('Ps'), 'h'))!;
+      const plan: [string, boolean, 'ranked' | 'room' | undefined][] = [
+        ['ember', true, 'ranked'],
+        ['ember', true, undefined],
+        ['tide', true, 'room'],
+        ['ember', false, 'ranked'],
+        ['tide', true, 'ranked'],
+      ];
+      let at = 10_000;
+      for (const [academyId, won, kind] of plan) {
+        at += 1000;
+        await store.recordResult({ userId: ps.id, academyId, score: won ? 50 : 30, place: won ? 1 : 2, won, players: 3, playedAt: at, ...(kind ? { kind } : {}) });
+      }
+      expect(await store.profileStats(ps.id)).toEqual({
+        totals: { games: 5, wins: 4, totalScore: 230, bestScore: 50, streak: 1, bestStreak: 3 },
+        byKind: { casual: { games: 2, wins: 2 }, ranked: { games: 3, wins: 2 } },
+        academies: [
+          { academyId: 'ember', games: 3, wins: 2 },
+          { academyId: 'tide', games: 2, wins: 2 },
+        ],
+      });
+      const none = (await store.createUser(n('Pn'), 'h'))!;
+      expect(await store.profileStats(none.id)).toEqual({
+        totals: { games: 0, wins: 0, totalScore: 0, bestScore: 0, streak: 0, bestStreak: 0 },
+        byKind: { casual: { games: 0, wins: 0 }, ranked: { games: 0, wins: 0 } },
+        academies: [],
+      });
+    });
   });
 }
 

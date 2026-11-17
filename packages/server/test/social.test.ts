@@ -264,8 +264,8 @@ describe('avatars', () => {
     expect(changed).toEqual([[a, tab2]]);
     expect(social.userOf(a)!.avatar).toEqual(av);
     expect(b.last('friends')!.list.friends[0]).toEqual({ username: 'Ana', online: true, avatar: av });
-    await send(b, { t: 'leaderboard' });
-    expect(b.last('leaderboard')!.rows.find((r) => r.username === 'Ana')!.avatar).toEqual(av);
+    await send(b, { t: 'profile', username: 'Ana' });
+    expect(b.last('profile')!.profile).toMatchObject({ username: 'Ana', avatar: av, me: false });
     await send(a, { t: 'profile' });
     expect(a.last('profile')!.profile.avatar).toEqual(av);
 

@@ -1,6 +1,23 @@
 import { describe, expect, it } from 'vitest';
-import { AVATAR_COLORS, AVATAR_ICONS, avatarKey, encode, isSocialMessage, parseAvatarKey, parseClientMessage, MAX_MESSAGE_BYTES, REACTIONS } from '../src/index';
-import type { ClientMessage, ServerMessage } from '../src/index';
+import {
+  AVATAR_COLORS,
+  AVATAR_ICONS,
+  avatarKey,
+  continentOf,
+  COUNTRY_CONTINENT,
+  countriesIn,
+  divisionOf,
+  encode,
+  isCountry,
+  isSocialMessage,
+  MAX_SEARCH,
+  parseAvatarKey,
+  parseClientMessage,
+  MAX_MESSAGE_BYTES,
+  REACTIONS,
+  START_RATING,
+} from '../src/index';
+import type { ClientMessage, LeaderRow, ServerMessage } from '../src/index';
 
 const plan = { buyLeft: { ink: 1 }, buyRight: {}, coinsToLeft: 2, coinsToRight: 0, coinsToBank: 0, free: false };
 
@@ -146,7 +163,11 @@ describe('stats and account management messages', () => {
     const { isSocialMessage } = await import('../src/index');
     const msgs: ClientMessage[] = [
       { t: 'profile' },
-      { t: 'leaderboard' },
+      { t: 'profile', username: 'Bob' },
+      { t: 'leaderboard', queue: '1v1', scope: 'global' },
+      { t: 'leaderboard', queue: '6-7', scope: 'friends', search: 'an' },
+      { t: 'setCountry', country: 'GR' },
+      { t: 'setCountry', country: null },
       { t: 'changePassword', current: 'secret1', next: 'secret2' },
       { t: 'logoutAll' },
       { t: 'deleteAccount', password: 'secret1' },
@@ -158,7 +179,9 @@ describe('stats and account management messages', () => {
   });
 
   it('drops unknown fields and rejects malformed ones', () => {
-    expect(parseClientMessage(JSON.stringify({ t: 'profile', username: 'Bob' }))).toEqual({ t: 'profile' });
+    expect(parseClientMessage(JSON.stringify({ t: 'profile', extra: 1 }))).toEqual({ t: 'profile' });
+    expect(parseClientMessage(JSON.stringify({ t: 'profile', username: '' }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ t: 'profile', username: 7 }))).toBeNull();
     expect(parseClientMessage(JSON.stringify({ t: 'changePassword', current: 'secret1' }))).toBeNull();
     expect(parseClientMessage(JSON.stringify({ t: 'changePassword', current: 'a', next: 'x'.repeat(129) }))).toBeNull();
     expect(parseClientMessage(JSON.stringify({ t: 'deleteAccount' }))).toBeNull();
@@ -280,5 +303,71 @@ describe('avatars', () => {
     expect(parseAvatarKey('comet:pink')).toBeNull();
     expect(parseAvatarKey(null)).toBeNull();
     expect(parseAvatarKey('')).toBeNull();
+  });
+});
+
+describe('ranked and profile messages (K/P)', () => {
+  it('leaderboard needs a known queue and scope; the search is trimmed, capped and dropped when empty', () => {
+    const p = (m: object) => parseClientMessage(JSON.stringify({ t: 'leaderboard', ...m }));
+    expect(p({})).toBeNull();
+    expect(p({ queue: '2v2', scope: 'global' })).toBeNull();
+    expect(p({ queue: '3-5', scope: 'planet' })).toBeNull();
+    expect(p({ queue: '3-5', scope: 'country', search: 5 })).toBeNull();
+    expect(p({ queue: '3-5', scope: 'country', search: 'x'.repeat(65) })).toBeNull();
+    expect(p({ queue: '3-5', scope: 'continent', search: '  Ana  ', x: 1 })).toEqual({ t: 'leaderboard', queue: '3-5', scope: 'continent', search: 'Ana' });
+    expect(p({ queue: '1v1', scope: 'global', search: '   ' })).toEqual({ t: 'leaderboard', queue: '1v1', scope: 'global' });
+    expect(p({ queue: '1v1', scope: 'global', search: 'y'.repeat(30) })).toMatchObject({ search: 'y'.repeat(MAX_SEARCH) });
+  });
+
+  it('setCountry takes only ISO 3166-1 alpha-2 codes (upper case) or null, and is social', () => {
+    expect(isSocialMessage({ t: 'setCountry', country: 'GR' })).toBe(true);
+    for (const bad of ['gr', 'GRC', 'XX', 'ZZ', '', 12, undefined, 'Greece']) {
+      expect(parseClientMessage(JSON.stringify({ t: 'setCountry', country: bad }))).toBeNull();
+    }
+  });
+
+  it('maps every ISO country to exactly one continent', () => {
+    const codes = Object.keys(COUNTRY_CONTINENT);
+    expect(codes).toHaveLength(249);
+    expect(new Set(codes).size).toBe(249);
+    for (const c of codes) expect(c).toMatch(/^[A-Z]{2}$/);
+    expect(continentOf('GR')).toBe('europe');
+    expect(continentOf('CY')).toBe('europe');
+    expect(continentOf('US')).toBe('north-america');
+    expect(continentOf('BR')).toBe('south-america');
+    expect(continentOf('JP')).toBe('asia');
+    expect(continentOf('NG')).toBe('africa');
+    expect(continentOf('NZ')).toBe('oceania');
+    expect(continentOf('AQ')).toBe('antarctica');
+    expect(continentOf('XX')).toBeNull();
+    expect(continentOf(null)).toBeNull();
+    expect(countriesIn('europe')).toContain('GR');
+    expect(isCountry('toString')).toBe(false);
+  });
+
+  it('divisions follow the rating bands', () => {
+    expect(START_RATING).toBe(1000);
+    expect([null, 1000, 1099, 1100, 1299, 1300, 1499, 1500, 2400].map(divisionOf)).toEqual([
+      'apprentice', 'apprentice', 'apprentice', 'adept', 'adept', 'magister', 'magister', 'archmage', 'archmage',
+    ]);
+  });
+
+  it('server messages survive JSON', () => {
+    const row: LeaderRow = { rank: 1, username: 'Ana', country: 'GR', division: 'adept', rating: 1120, games: 3 };
+    const msgs: ServerMessage[] = [
+      { t: 'leaderboard', queue: '1v1', scope: 'global', rows: [row], me: { ...row, rank: null, rating: null, games: 0, division: 'apprentice' } },
+      {
+        t: 'profile',
+        profile: {
+          username: 'Ana', country: null, memberSince: 5, me: false,
+          ranked: [{ queue: '1v1', rating: null, division: 'apprentice', rank: null, countryRank: null }],
+          totals: { games: 1, wins: 1, totalScore: 50, bestScore: 50, streak: 1, bestStreak: 1 },
+          byKind: { casual: { games: 0, wins: 0 }, ranked: { games: 1, wins: 1 } },
+          academies: [{ academyId: 'ember', games: 1, wins: 1 }],
+          recent: [{ at: 9, kind: 'ranked', queue: '1v1', academyId: 'ember', side: 'B', place: 1, score: 50, players: 3, ratingDelta: 16 }],
+        },
+      },
+    ];
+    for (const m of msgs) expect(JSON.parse(encode(m))).toEqual(m);
   });
 });

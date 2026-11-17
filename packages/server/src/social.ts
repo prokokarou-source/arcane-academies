@@ -1,21 +1,32 @@
 import {
+  continentOf,
+  countriesIn,
+  divisionOf,
+  isCountry,
+  LEADERBOARD_SIZE,
   MAX_PASSWORD,
   MIN_PASSWORD,
   normalizeRecoveryCode,
   PROFILE_HISTORY,
+  QUEUES,
+  START_RATING,
   USERNAME_RE,
   type Avatar,
   type ErrorCode,
   type FriendList,
   type LeaderRow,
+  type Profile,
+  type Queue,
   type ReportReason,
+  type Scope,
   type SocialMessage,
 } from '@arcane/protocol';
+import { ratingDeltas } from './rating';
 import type { Clock } from './clock';
 import { hashPassword, hashToken, newRecoveryCode, newToken, verifyPassword } from './passwords';
 import { isPushEndpoint, Push, type PushConfig } from './push';
 import type { Conn } from './room';
-import { NO_STATS, usernameKey, withAvatar, type GameRecord, type Store, type User } from './store';
+import { usernameKey, withAvatar, type BoardScope, type GameRecord, type Store, type User } from './store';
 
 export interface SocialOptions {
   /** The room code this connection is seated in, if any (for invites). */
@@ -148,12 +159,15 @@ export class Social {
       }
     }
     const me = this.userOf(conn);
+    // Other players' profiles and the non-friend leaderboards are open to guests too.
+    if (msg.t === 'profile') return this.sendProfile(conn, me, msg.username);
+    if (msg.t === 'leaderboard') return this.sendLeaderboard(conn, me, msg.queue, msg.scope, msg.search);
     if (!me) return this.fail(conn, 'not_logged_in');
     switch (msg.t) {
-      case 'profile':
+      case 'setCountry':
+        if (msg.country !== null && !isCountry(msg.country)) return this.fail(conn, 'bad_message');
+        await this.store.setCountry(me.id, msg.country);
         return this.sendProfile(conn, me);
-      case 'leaderboard':
-        return this.sendLeaderboard(conn, me);
       case 'logoutAll':
         await this.store.deleteSessions(me.id);
         return this.endLogins(me.id);
@@ -471,45 +485,137 @@ export class Social {
 
   // ---------- stats ----------
 
-  /** Save finished games; a failing database only loses the records, never the game. */
+  /** Games are saved one after another, so ratings read for one game already include the previous one. */
+  private saving: Promise<void> = Promise.resolve();
+
+  /** Save finished games (applying ratings to ranked ones); a failing database only loses the records, never the game. */
   recordResults(records: GameRecord[]): Promise<void> {
-    return Promise.all(records.map((r) => this.store.recordResult(r)))
-      .then(() => undefined)
+    this.saving = this.saving
+      .then(() => this.saveGame(records))
       .catch((e: Error) => console.error('saving game results failed:', e.message));
+    return this.saving;
   }
 
-  private async sendProfile(conn: Conn, me: User): Promise<void> {
-    const [totals, recent] = await Promise.all([this.store.totals([me.id]), this.store.history(me.id, PROFILE_HISTORY)]);
-    conn.send({
-      t: 'profile',
-      profile: {
+  /** Ranked (every record ranked in one queue, two or more accounts): pairwise Elo by place, kept with each record. */
+  private async saveGame(records: GameRecord[]): Promise<void> {
+    const queue = records[0]?.queue;
+    if (queue && records.length >= 2 && records.every((r) => r.kind === 'ranked' && r.queue === queue)) {
+      const now = await this.store.ratings(queue, records.map((r) => r.userId));
+      const deltas = ratingDeltas(records.map((r) => ({ id: r.userId, rating: now.get(r.userId)?.rating ?? START_RATING, place: r.place })));
+      records = records.map((r) => ({ ...r, ratingDelta: deltas.get(r.userId) ?? 0 }));
+      await Promise.all(records.map((r) => this.store.addRating(r.userId, queue, r.ratingDelta ?? 0)));
+    }
+    await Promise.all(records.map((r) => this.store.recordResult(r)));
+  }
+
+  /** My profile (login needed) or another player's by username (read-only). */
+  private async sendProfile(conn: Conn, me: User | null, username?: string): Promise<void> {
+    let id: string;
+    if (username === undefined) {
+      if (!me) return this.fail(conn, 'not_logged_in');
+      id = me.id;
+    } else {
+      const found = await this.store.findUser(username);
+      if (!found) return this.fail(conn, 'no_user');
+      id = found.id;
+    }
+    const profile = await this.profile(id, me?.id ?? null);
+    if (!profile) return this.fail(conn, 'no_user');
+    conn.send({ t: 'profile', profile });
+  }
+
+  async profile(userId: string, viewerId: string | null): Promise<Profile | null> {
+    const acc = await this.store.account(userId);
+    if (!acc) return null;
+    const [stats, recent, ranked] = await Promise.all([
+      this.store.profileStats(userId),
+      this.store.history(userId, PROFILE_HISTORY),
+      Promise.all(
+        QUEUES.map(async (queue) => {
+          const rating = (await this.store.ratings(queue, [userId])).get(userId)?.rating ?? null;
+          const [rank, countryRank] =
+            rating === null
+              ? [null, null]
+              : await Promise.all([
+                  this.store.rankOf(queue, userId, {}),
+                  acc.country ? this.store.rankOf(queue, userId, { countries: [acc.country] }) : null,
+                ]);
+          return { queue, rating, division: divisionOf(rating), rank, countryRank };
+        }),
+      ),
+    ]);
+    return {
+      username: acc.user.username,
+      ...withAvatar(acc.user.avatar),
+      country: acc.country,
+      memberSince: acc.memberSince,
+      me: userId === viewerId,
+      ranked,
+      totals: stats.totals,
+      byKind: stats.byKind,
+      academies: stats.academies,
+      recent: recent.map((r) => ({
+        at: r.playedAt,
+        kind: r.kind ?? 'casual',
+        ...(r.queue ? { queue: r.queue } : {}),
+        academyId: r.academyId,
+        side: r.side ?? 'A',
+        place: r.place,
+        score: r.score,
+        players: r.players,
+        ...(r.ratingDelta !== undefined ? { ratingDelta: r.ratingDelta } : {}),
+      })),
+    };
+  }
+
+  /** Who a scope covers for this viewer; null when it covers nobody (continent/country without a country set). */
+  private async boardScope(me: User | null, scope: Scope): Promise<BoardScope | null> {
+    if (scope === 'global') return {};
+    if (scope === 'friends') {
+      if (!me) return null;
+      const friends = (await this.store.friendRows(me.id)).filter((r) => r.accepted).map((r) => r.other.id);
+      return { userIds: [me.id, ...friends] };
+    }
+    const country = me ? (await this.store.account(me.id))?.country : null;
+    const continent = continentOf(country);
+    if (!country || !continent) return null;
+    return scope === 'country' ? { countries: [country] } : { countries: countriesIn(continent) };
+  }
+
+  /** The top rows of a queue in a scope (a search keeps the scope ranks), plus my own row when logged in. */
+  async leaderboard(me: User | null, queue: Queue, scope: Scope, search?: string): Promise<{ rows: LeaderRow[]; me: LeaderRow | null }> {
+    const s = await this.boardScope(me, scope);
+    const found = s ? await this.store.leaderboard(queue, s, search ? usernameKey(search) : null, LEADERBOARD_SIZE) : [];
+    const rows: LeaderRow[] = found.map((r) => ({
+      rank: r.rank,
+      username: r.user.username,
+      country: r.country,
+      ...withAvatar(r.user.avatar),
+      division: divisionOf(r.rating),
+      rating: r.rating,
+      games: r.games,
+    }));
+    if (!me) return { rows, me: null };
+    const [acc, mine] = await Promise.all([this.store.account(me.id), this.store.ratings(queue, [me.id])]);
+    const rated = mine.get(me.id);
+    const rank = rated && s ? await this.store.rankOf(queue, me.id, s) : null;
+    return {
+      rows,
+      me: {
+        rank,
         username: me.username,
-        ...withAvatar(me.avatar),
-        ...(totals.get(me.id) ?? NO_STATS),
-        recent: recent.map((r) => ({ at: r.playedAt, academyId: r.academyId, score: r.score, place: r.place, won: r.won, players: r.players })),
+        country: acc?.country ?? null,
+        ...withAvatar(acc ? acc.user.avatar : me.avatar),
+        division: divisionOf(rated?.rating ?? null),
+        rating: rated?.rating ?? null,
+        games: rated?.games ?? 0,
       },
-    });
+    };
   }
 
-  /** Me and my accepted friends, most wins first, then the better win rate. */
-  async leaderboard(me: User): Promise<LeaderRow[]> {
-    const friends = (await this.store.friendRows(me.id)).filter((r) => r.accepted).map((r) => r.other);
-    const people = [me, ...friends];
-    const totals = await this.store.totals(people.map((u) => u.id));
-    const rate = (r: LeaderRow) => (r.games ? r.wins / r.games : 0);
-    return people
-      .map((u) => {
-        const t = totals.get(u.id) ?? NO_STATS;
-        return { username: u.username, games: t.games, wins: t.wins, me: u.id === me.id, ...withAvatar(u.avatar) };
-      })
-      .sort(
-        (a, b) =>
-          b.wins - a.wins || rate(b) - rate(a) || b.games - a.games || a.username.localeCompare(b.username, 'en', { sensitivity: 'base' }),
-      );
-  }
-
-  private async sendLeaderboard(conn: Conn, me: User): Promise<void> {
-    conn.send({ t: 'leaderboard', rows: await this.leaderboard(me) });
+  private async sendLeaderboard(conn: Conn, me: User | null, queue: Queue, scope: Scope, search?: string): Promise<void> {
+    if (scope === 'friends' && !me) return this.fail(conn, 'not_logged_in');
+    conn.send({ t: 'leaderboard', queue, scope, ...(await this.leaderboard(me, queue, scope, search)) });
   }
 
   private async pushFriends(userId: string): Promise<void> {

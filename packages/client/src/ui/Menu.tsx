@@ -142,9 +142,7 @@ export function Stepper(props: { label: string; value: number; min: number; max:
 /** Avatar and name (or Guest + Log in) on the left; the bell with friend requests and invites on the right. */
 export function MenuHeader(props: { onLogin(): void; onProfile(): void; onFriends(): void }) {
   const t = useT();
-  const { account, avatar, friends, invites } = useClientState();
-  const [bell, setBell] = useState(false);
-  const count = (friends?.incoming.length ?? 0) + invites.length;
+  const { account, avatar } = useClientState();
   return (
     <header className="menu-head">
       {account ? (
@@ -161,12 +159,25 @@ export function MenuHeader(props: { onLogin(): void; onProfile(): void; onFriend
           </button>
         </div>
       )}
+      <Bell onFriends={props.onFriends} />
+    </header>
+  );
+}
+
+/** The bell: friend requests and room invites, with a count badge. */
+export function Bell(props: { onFriends(): void }) {
+  const t = useT();
+  const { friends, invites } = useClientState();
+  const [bell, setBell] = useState(false);
+  const count = (friends?.incoming.length ?? 0) + invites.length;
+  return (
+    <>
       <button className="bell" aria-label={count ? t('notificationsN', { n: count }) : t('notifications')} onClick={() => setBell(true)}>
         <Glyph name="bell" size={24} />
         {count > 0 && <span className="badge">{count > 9 ? '9+' : count}</span>}
       </button>
       {bell && <BellSheet onClose={() => setBell(false)} onFriends={props.onFriends} />}
-    </header>
+    </>
   );
 }
 
@@ -231,7 +242,7 @@ function BellSheet(props: { onClose(): void; onFriends(): void }) {
   );
 }
 
-const TABS: { id: Tab; icon: string; key: 'tabBoards' | 'tabRooms' | 'tabPlay' | 'tabMore' }[] = [
+export const TABS: { id: Tab; icon: string; key: 'tabBoards' | 'tabRooms' | 'tabPlay' | 'tabMore' }[] = [
   { id: 'boards', icon: 'boards', key: 'tabBoards' },
   { id: 'rooms', icon: 'rooms', key: 'tabRooms' },
   { id: 'play', icon: 'play', key: 'tabPlay' },

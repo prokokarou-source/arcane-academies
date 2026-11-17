@@ -139,6 +139,17 @@ describe('Game end', () => {
     expect(h.sock().sent).toEqual([{ t: 'playAgain', ready: false }]);
   });
 
+  it('after a ranked game the only way on is Main menu', () => {
+    const h = play('s1', 's1', [{ ...endedWith(0, [false, false, false]), kind: 'ranked' as const }]);
+    expect(screen.queryByRole('button', { name: 'Play again' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Back to lobby' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Start now' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Main menu' }));
+    expect(h.sock().sent).toEqual([{ t: 'leave' }]);
+    act(() => h.sock().receive({ t: 'closed', reason: 'left' }));
+    expect(h.client.getState()).toMatchObject({ game: null, notice: null });
+  });
+
   it('the host can start now or go back to the lobby', () => {
     const h = play('s1', 's1', [endedWith(0, [false, true, false])]);
     fireEvent.click(screen.getByRole('button', { name: 'Start now' }));

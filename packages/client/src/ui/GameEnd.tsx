@@ -57,7 +57,8 @@ function ScoreItems(props: { items: ScoreItem[] | undefined }) {
 export function GameEnd(props: { me: number; result: GameResult; seats: SeatStatus[] }) {
   const client = useClient();
   const t = useT();
-  const { seatId, hostId, local } = useClientState();
+  const { seatId, hostId, local, game } = useClientState();
+  const rankedGame = game?.kind === 'ranked';
   const { result, seats, me } = props;
   const [open, setOpen] = useState<number | null>(me);
   const name = (seat: number) => seats[seat]?.name ?? `#${seat}`;
@@ -133,6 +134,12 @@ export function GameEnd(props: { me: number; result: GameResult; seats: SeatStat
         </table>
       </div>
       <p className="muted small center">{t('tapForDetails')}</p>
+      {rankedGame ? (
+        <button className="primary" onClick={() => client.leave()}>
+          {t('mainMenu')}
+        </button>
+      ) : (
+      <>
       <div className="play-again">
         {iAmReady ? (
           <button onClick={() => client.playAgain(false)}>{t('notReady')}</button>
@@ -156,6 +163,8 @@ export function GameEnd(props: { me: number; result: GameResult; seats: SeatStat
       <button className="link" onClick={() => client.leave()}>
         {t('leave')}
       </button>
+      </>
+      )}
     </section>
   );
 }

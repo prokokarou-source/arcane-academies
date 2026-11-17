@@ -444,7 +444,7 @@ export interface GameResult {
 export type ServerMessage =
   | { t: 'joined'; code: string; seatId: SeatId; token: string }
   | { t: 'lobby'; lobby: LobbyState }
-  | { t: 'game'; view: PlayerView; legal: Action[]; seats: SeatStatus[]; deadline: number | null; result?: GameResult; reveal?: GameReveal }
+  | { t: 'game'; view: PlayerView; legal: Action[]; seats: SeatStatus[]; deadline: number | null; result?: GameResult; reveal?: GameReveal; kind?: 'casual' | 'ranked' | 'room' }
   | { t: 'error'; code: ErrorCode; message: string }
   | { t: 'closed'; reason: CloseReason }
   /** Someone in the room reacted. `seat` is their engine seat during a game, else null. */

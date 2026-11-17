@@ -187,6 +187,8 @@ export class GameClient {
   private rejoinPending = false;
   /** The seat this client holds. Storage is read once at start (reload) and only written afterwards, so tabs never steal from each other. */
   private session: Session | null = null;
+  /** The player left a finished game on purpose: do not show the 'You left' notice. */
+  private quietLeave = false;
   /** The solo game running in this browser, if any. */
   private localGame: LocalGame | null = null;
   /** Saved login, resent on every (re)connect so presence follows the socket. */
@@ -443,6 +445,8 @@ export class GameClient {
         return;
       case 'closed':
         this.dropSession(msg.reason);
+        if (msg.reason === 'left' && this.quietLeave) this.set({ notice: null });
+        this.quietLeave = false;
         return;
       case 'reaction':
         if (this.state.code) this.reactionListeners.forEach((f) => f({ seatId: msg.seatId, seat: msg.seat, reaction: msg.reaction }));
@@ -588,7 +592,10 @@ export class GameClient {
   }
 
   leave(): void {
-    if (this.localGame) return this.endLocal();
+    // Leaving a finished game is just going home: no "You left the room" notice then.
+    const over = !!this.state.game?.result;
+    if (this.localGame) return this.endLocal(over);
+    this.quietLeave = over;
     this.send({ t: 'leave' });
   }
 

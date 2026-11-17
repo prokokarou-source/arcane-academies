@@ -132,6 +132,15 @@ describe('queues', () => {
     expect(records).toHaveLength(1);
     const side = room.state!.players[0].side;
     for (const r of records[0]) expect(r).toMatchObject({ kind: 'ranked', queue: '1v1', side, players: 2 });
+    // Game messages say it is ranked, and a ranked table cannot be replayed: back to the menu.
+    expect(a.last('game')!.kind).toBe('ranked');
+    for (const t of ['rematch', 'playAgainNow'] as const) {
+      mgr.onMessage(a, { t });
+      expect(a.lastError()).toBe('wrong_phase');
+    }
+    mgr.onMessage(b, { t: 'playAgain', ready: true });
+    expect(b.lastError()).toBe('wrong_phase');
+    expect(room.state!.phase).toBe('ended');
   });
 
   it('queueLeave and disconnect remove a player; entering a room ends the search', () => {

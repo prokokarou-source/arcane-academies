@@ -272,11 +272,11 @@ export class Room {
       case 'act':
         return this.act(m, msg.action);
       case 'rematch':
-        return this.rematch(m);
       case 'playAgain':
-        return this.playAgain(m, msg.ready);
       case 'playAgainNow':
-        return this.playAgainNow(m);
+        // A ranked table plays once: everyone goes back to the menu and queues again.
+        if (this.setup.kind === 'ranked') return this.fail(m.conn!, 'wrong_phase', 'Ranked games cannot be replayed');
+        return msg.t === 'rematch' ? this.rematch(m) : msg.t === 'playAgain' ? this.playAgain(m, msg.ready) : this.playAgainNow(m);
       case 'react':
         return this.react(m, msg.reaction);
       default:
@@ -726,7 +726,7 @@ export class Room {
       if (!m.conn) continue;
       const seat = m.engineSeat;
       const legal = s.players[seat].pending ? [] : legalActions(s, seat);
-      m.conn.send({ t: 'game', view: viewFor(s, seat), legal, seats, deadline: this.deadline, ...(result ? { result } : {}), ...(reveal ? { reveal } : {}) });
+      m.conn.send({ t: 'game', view: viewFor(s, seat), legal, seats, deadline: this.deadline, kind: this.setup.kind, ...(result ? { result } : {}), ...(reveal ? { reveal } : {}) });
     }
   }
 

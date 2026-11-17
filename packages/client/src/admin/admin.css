@@ -1,0 +1,41 @@
+/* The hidden /admin page only (loaded with it, never in the game). */
+.adm { max-width: 760px; margin: 0 auto; padding: var(--s4); display: flex; flex-direction: column; gap: var(--s4); min-height: 100dvh; }
+.adm-top { display: flex; align-items: baseline; gap: var(--s3); }
+.adm-top h1 { font-family: var(--title); color: var(--gold); margin: 0; font-size: 1.6rem; }
+.adm-card h2 { margin: 0; font-family: var(--title); font-size: 1.3rem; }
+.adm-card a.button { align-self: flex-start; text-decoration: none; padding: var(--s2) var(--s4); border-radius: var(--r-md); background: var(--gold); color: var(--ink); font-weight: 700; }
+.adm-qr { width: min(260px, 70vw); height: auto; align-self: center; background: #fff; padding: var(--s2); border-radius: var(--r-sm); }
+.adm-secret { word-break: break-all; user-select: all; }
+.adm-code { display: flex; flex-direction: column; gap: var(--s3); }
+.adm-code input { font-size: 1.4rem; letter-spacing: 0.15em; text-align: center; }
+.adm-codes { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s2); }
+.adm-codes code { display: block; padding: var(--s2); border-radius: var(--r-sm); background: var(--inset); text-align: center; font-size: 1.05rem; user-select: all; }
+.adm-tabs { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; }
+.adm-tabs [role='tab'] { padding: var(--s2) var(--s4); border-radius: 999px; }
+.adm-tabs [role='tab'][aria-selected='true'] { background: var(--gold); color: var(--ink); }
+.adm-tabs .grow { flex: 1; }
+.adm-feedback { display: flex; flex-direction: column; gap: var(--s3); }
+.adm-filter { display: flex; align-items: center; gap: var(--s2); color: var(--muted); }
+.adm-item header { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; }
+.adm-item.read { opacity: 0.65; }
+.adm-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.adm-kind-bug { background: rgba(255, 138, 122, 0.2); color: var(--danger); }
+.adm-kind-idea { background: rgba(134, 219, 160, 0.2); color: var(--ok); }
+.adm-shot { max-width: 100%; max-height: 70vh; object-fit: contain; border-radius: var(--r-sm); align-self: flex-start; }
+.adm-numbers { display: flex; flex-direction: column; gap: var(--s3); }
+.adm-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s2); }
+.adm-stat { display: flex; flex-direction: column; gap: 2px; padding: var(--s3); border-radius: var(--r-md); background: var(--inset); }
+.adm-stat strong { font-size: 1.6rem; color: var(--gold); font-variant-numeric: tabular-nums; }
+.adm-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.adm-table th { text-align: left; font-weight: 500; }
+.adm-table th, .adm-table td { padding: var(--s2) 0; border-top: 1px solid var(--line); }
+.adm-table td { text-align: right; padding-left: var(--s3); }
+.adm-bar { display: grid; grid-template-columns: 9.5em 1fr 6.5em; align-items: center; gap: var(--s2); font-size: 0.95rem; }
+.adm-bar > span:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+.adm-bar-track { height: 10px; border-radius: 999px; background: var(--inset); overflow: hidden; }
+.adm-bar-fill { display: block; height: 100%; background: var(--gold); border-radius: 999px; }
+@media (max-width: 480px) {
+  .adm-stats { grid-template-columns: 1fr 1fr; }
+  .adm-bar { grid-template-columns: 1fr 5.5em; }
+  .adm-bar-track { grid-column: 1 / -1; grid-row: 2; }
+}

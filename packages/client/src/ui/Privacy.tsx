@@ -24,12 +24,20 @@ export function Privacy({ onBack }: { onBack(): void }) {
           <strong>Crash reports:</strong> when the app breaks, it sends the error text, the app version and the page. No names, no
           passwords, no tokens.
         </li>
+        <li>
+          <strong>Usage numbers:</strong> to see how the game is used, our own server counts app opens, sign-ups and games started or
+          finished, linked to a random id made on your device (and your account, if logged in). No IP addresses, no third parties.
+        </li>
+        <li>
+          <strong>Feedback:</strong> what you write in Feedback, with your username, device type, app version, the screen you were on and
+          any screenshot you add.
+        </li>
       </ul>
 
       <h3>What we don't do</h3>
       <ul>
         <li>No email address or phone number is asked for.</li>
-        <li>No ads, no analytics, no tracking cookies, and nothing is sold or shared.</li>
+        <li>No ads, no third-party analytics, no tracking cookies, and nothing is sold or shared.</li>
       </ul>
 
       <h3>Where it lives</h3>

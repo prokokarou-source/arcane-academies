@@ -312,3 +312,10 @@ details.lobby-settings > summary::-webkit-details-marker { display: none; }
 .academy-chip { min-width: 6.5em; }
 .app-desk .lobby-seat { gap: 6px; }
 .lobby-seat .react-btn { min-width: 32px; width: 32px; padding: 0; }
+
+/* In-app feedback (More › Feedback). */
+.feedback-form textarea { width: 100%; resize: vertical; min-height: 7em; font: inherit; color: var(--text); background: var(--inset); border: 1px solid rgba(169, 160, 200, 0.32); border-radius: var(--r-sm); padding: var(--s3); }
+.feedback-form textarea:focus { outline: none; border-color: rgba(232, 181, 74, 0.7); box-shadow: 0 0 0 3px rgba(232, 181, 74, 0.15); }
+.feedback-shot { display: flex; align-items: flex-start; gap: var(--s3); }
+.feedback-shot img { max-width: 50%; max-height: 220px; object-fit: contain; border-radius: var(--r-sm); border: 1px solid var(--line); }
+.feedback-thanks { align-items: flex-start; }

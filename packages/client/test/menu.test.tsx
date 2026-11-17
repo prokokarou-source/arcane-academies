@@ -272,7 +272,9 @@ describe('More tab', () => {
     expect(rows('Account')).toEqual(['Log in or create an account', 'Friends']);
     expect(rows('Game')).toEqual([expect.stringMatching(/^What's new ?v/), 'LanguageEnglish', 'Rules', 'FAQ', 'Settings']);
     const about = screen.getByRole('region', { name: 'About' });
-    expect(within(about).getByRole('link', { name: 'Feedback' }).getAttribute('href')).toMatch(/github\.com\/.+\/issues$/);
+    // Feedback is an in-app form now, not a link out.
+    expect(within(about).queryByRole('link', { name: 'Feedback' })).toBeNull();
+    expect(within(about).getByRole('button', { name: 'Feedback' })).toBeTruthy();
     act(() => h.sock().receive({ t: 'account', username: 'Ana' }));
     expect(rows('Account')).toEqual(['Profile & stats', 'Friends', 'Account settings', 'Log out']);
     fireEvent.click(screen.getByRole('button', { name: 'Log out' }));

@@ -128,6 +128,11 @@ export class PgStore implements Store {
     return this.pool.query(sql, params);
   }
 
+  /** One query on this store's pool, after its migrations (used by PgInsights to share the connection pool). */
+  query(sql: string, params: unknown[]) {
+    return this.q(sql, params);
+  }
+
   close(): Promise<void> {
     return this.pool.end();
   }

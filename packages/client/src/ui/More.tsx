@@ -7,7 +7,7 @@ import { Glyph, TabScreen } from './Menu';
 import { ISSUES_URL } from './Privacy';
 import { ScreenHead } from './ScreenHead';
 
-export type MorePage = 'profile' | 'friends' | 'account' | 'news' | 'language' | 'rules' | 'faq' | 'settings' | 'about' | 'privacy';
+export type MorePage = 'profile' | 'friends' | 'account' | 'news' | 'language' | 'rules' | 'faq' | 'settings' | 'about' | 'privacy' | 'feedback';
 
 export const LANGS: { id: Lang; label: string }[] = [
   { id: 'en', label: 'English' },
@@ -85,7 +85,7 @@ export function More({ onOpen }: { onOpen(p: MorePage): void }) {
       <Group title={t('groupAbout')}>
         <Row label={t('aboutGame')} onClick={() => onOpen('about')} />
         <Row label={t('privacy')} onClick={() => onOpen('privacy')} />
-        <Row label={t('feedback')} href={ISSUES_URL} />
+        <Row label={t('feedback')} onClick={() => onOpen('feedback')} />
       </Group>
       {install.iosHint && (
         <div className="banner" role="note">
@@ -128,7 +128,7 @@ export const FAQ: { q: string; a: string }[] = [
   { q: 'How are side and academy chosen?', a: 'The whole table plays the same side (A or B). In matchmaking both are drawn at random; in rooms the host picks the side and each player may pick an academy.' },
   { q: 'How do I play with friends?', a: 'Create a room in the Rooms tab, make it Private and share the code, or invite friends from the lobby.' },
   { q: 'What happens if I lose connection?', a: 'Your seat waits for you. If you are away too long, a bot plays for you until you come back.' },
-  { q: 'How do I report a problem?', a: 'Use Feedback under More. It opens the project’s issue page.' },
+  { q: 'How do I report a problem?', a: 'Use Feedback under More (log in first). You can add a screenshot; we read every message.' },
 ];
 
 export function WhatsNew({ onBack }: { onBack(): void }) {

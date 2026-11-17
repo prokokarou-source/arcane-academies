@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useOnline, useUpdate } from '../pwa/context';
 import type { Queue } from '../net/menuTypes';
 import { Account } from './Account';
 import { DeskShell, FriendsRail, SideNav } from './Desk';
 import { useWide } from './layout';
 import { useClient, useClientState, usePrefs, useT } from './context';
+import { Feedback } from './Feedback';
 import { Friends } from './Friends';
 import { Game } from './Game';
 import { Leaderboards } from './Leaderboards';
@@ -95,6 +96,10 @@ export function App({ initialRoom, initialPage }: { initialRoom?: string; initia
   };
 
   const id = top?.id;
+  // The screen name sent with feedback: the last few places the player was before opening it.
+  const here = id ?? (state.game ? 'game' : state.lobby ? 'lobby' : state.queue ? 'queue' : tab);
+  const trail = useRef<string[]>([]);
+  if (trail.current.at(-1) !== here) trail.current = [...trail.current, here].slice(-4);
   let screen;
   let menu = false;
   if (id === 'privacy' && !inRoom) screen = <Privacy onBack={leavePrivacy} />;
@@ -118,6 +123,7 @@ export function App({ initialRoom, initialPage }: { initialRoom?: string; initia
   else if (id === 'language') screen = <LanguagePage onBack={back} />;
   else if (id === 'faq') screen = <Faq onBack={back} />;
   else if (id === 'about') screen = <About onBack={back} />;
+  else if (id === 'feedback') screen = <Feedback onBack={back} onLogin={() => push({ id: 'account' })} screen={trail.current.slice(0, -1).join(' › ') || 'more'} />;
   else if (id === 'createRoom') screen = <CreateRoom onBack={back} playName={playName} />;
   else {
     menu = true;

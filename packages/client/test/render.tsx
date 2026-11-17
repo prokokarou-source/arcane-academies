@@ -11,6 +11,7 @@ export function openMore(row: string) {
   fireEvent.click(screen.getByRole('button', { name: row }));
 }
 import { SoundProvider } from '../src/audio/context';
+import type { Api } from '../src/net/api';
 import type { SoundBoard } from '../src/audio/sounds';
 import { PwaProvider, type Pwa } from '../src/pwa/context';
 import { App } from '../src/ui/App';
@@ -18,9 +19,9 @@ import { ClientProvider } from '../src/ui/context';
 import { harness, memoryStorage } from './fakeSocket';
 
 /** Render the whole app over a fake, already open socket. */
-export function renderApp(opts: { initialRoom?: string; storage?: ReturnType<typeof memoryStorage>; pwa?: Pwa; sound?: SoundBoard } = {}) {
+export function renderApp(opts: { initialRoom?: string; storage?: ReturnType<typeof memoryStorage>; pwa?: Pwa; sound?: SoundBoard; api?: Api } = {}) {
   const storage = opts.storage ?? memoryStorage();
-  const h = harness(storage);
+  const h = harness(storage, opts.api ? { api: opts.api } : {});
   h.client.start();
   h.sock().open();
   const app = (

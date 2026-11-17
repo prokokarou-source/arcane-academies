@@ -21,3 +21,6 @@ services:
       # Contact for push services, e.g. mailto:you@example.com
       - key: VAPID_SUBJECT
         sync: false
+      # Encrypts the admin's authenticator secret; the hidden /admin page is off without it (see docs/admin.md).
+      - key: ADMIN_KEY
+        generateValue: true

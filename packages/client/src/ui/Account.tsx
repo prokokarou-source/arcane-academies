@@ -1,27 +1,32 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { MAX_PASSWORD, MIN_PASSWORD, USERNAME_RE } from '@arcane/protocol';
-import { usePush } from '../pwa/context';
 import { useClient, useClientState, useT } from './context';
+import { useLogout } from './More';
+import { CountrySelect } from './Profile';
 import { PushToggle } from './PushToggle';
 import { BlockedList, RecoverySection } from './Safety';
 import { ScreenHead } from './ScreenHead';
 import { AvatarGlyph, AvatarPicker } from './Avatar';
 
 /** Log in or create an account (username + password). Optional: guests can always play. */
-export function Account(props: { onBack(): void; onFriends(): void; onProfile(): void; onPrivacy?(): void }) {
+export function Account(props: { onBack(): void; onPrivacy?(): void }) {
   const client = useClient();
   const t = useT();
-  const { account, avatar, accountPending, socialError } = useClientState();
-  const push = usePush();
+  const { account, avatar, accountPending, socialError, profile } = useClientState();
+  const logout = useLogout();
   const [mode, setMode] = useState<'login' | 'signup' | 'recover'>('login');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [code, setCode] = useState('');
+  const mine = profile?.me ? profile : null;
+  useEffect(() => {
+    if (account && !mine) client.requestProfile();
+  }, [account, mine, client]);
 
   if (account) {
     return (
       <main className="screen">
-        <ScreenHead title={t('account')} onBack={props.onBack} />
+        <ScreenHead title={t('accountSettings')} onBack={props.onBack} />
         <section className="panel id-card">
           <AvatarGlyph avatar={avatar} size={64} label={t('avatarOf', { name: account })} />
           <p className="who">{t('signedInAs', { name: account })}</p>
@@ -29,23 +34,10 @@ export function Account(props: { onBack(): void; onFriends(): void; onProfile():
             <summary>{t('avatar')}</summary>
             <AvatarPicker value={avatar} onPick={(a) => client.setAvatar(a)} />
           </details>
-          <div className="row stretch">
-            <button className="primary" onClick={props.onProfile}>
-              {t('profile')}
-            </button>
-            <button onClick={props.onFriends}>{t('friends')}</button>
-          </div>
+          <CountrySelect value={mine?.country ?? null} />
         </section>
         <PushToggle />
-        <button
-          onClick={async () => {
-            // This device should stop getting this account's notifications.
-            if (push.store && push.status === 'on') await push.store.disable((e) => client.removePush(e));
-            client.logout();
-          }}
-        >
-          {t('logOut')}
-        </button>
+        <button onClick={() => void logout()}>{t('logOut')}</button>
         <BlockedList />
         <ManageAccount />
       </main>

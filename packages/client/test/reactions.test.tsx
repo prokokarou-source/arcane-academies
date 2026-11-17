@@ -4,7 +4,7 @@ import type { LobbyState, ReactionId } from '@arcane/protocol';
 import type { SoundBoard } from '../src/audio/sounds';
 import { BUBBLE_MS } from '../src/ui/Reactions';
 import { harness, memoryStorage } from './fakeSocket';
-import { renderApp } from './render';
+import { openMore, renderApp } from './render';
 import { gameMsg, makeGame } from './views';
 
 beforeEach(() => vi.useFakeTimers());
@@ -140,7 +140,7 @@ describe('Settings', () => {
   it('has a Mute reactions switch that is saved', () => {
     const storage = memoryStorage();
     renderApp({ storage });
-    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    openMore('Settings');
     const box = screen.getByRole('checkbox', { name: 'Mute reactions' }) as HTMLInputElement;
     expect(box.checked).toBe(false);
     fireEvent.click(box);

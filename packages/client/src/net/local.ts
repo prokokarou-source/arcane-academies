@@ -16,10 +16,10 @@ import {
   viewFor,
   winners,
 } from '@arcane/engine';
+import { ACADEMIES } from '@arcane/engine';
 import type { Action, BotLevel, GameState, SeatConfig } from '@arcane/engine';
-import type { SeatStatus, ServerMessage } from '@arcane/protocol';
-
-type GameMsg = Extract<ServerMessage, { t: 'game' }>;
+import type { SeatStatus } from '@arcane/protocol';
+import type { GameMsg, Reveal, Side } from './menuTypes';
 type Store = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
 /** What a reload needs to pick the game up again. */
@@ -77,7 +77,7 @@ export class LocalGame {
 
   static start(deps: LocalDeps, name: string, bots: number, level: BotLevel): LocalGame {
     const g = new LocalGame(deps, { v: 1, name, bots, level, state: newState(deps, name, bots, level) });
-    g.step();
+    g.step(true);
     return g;
   }
 
@@ -105,7 +105,7 @@ export class LocalGame {
     this.cancel();
     const { name, bots, level } = this.save;
     this.save = { ...this.save, state: newState(this.deps, name, bots, level) };
-    this.step();
+    this.step(true);
   }
 
   /** End the game for good and forget it. */
@@ -127,11 +127,12 @@ export class LocalGame {
   }
 
   /** Publish the state, then let the bots move (and the turn resolve) after a short pause. */
-  private step(): void {
+  private step(fresh = false): void {
     if (this.stopped) return;
     const s = this.save.state;
     saveLocal(this.deps.storage, this.save);
-    this.deps.emit(message(s));
+    // A new game's first message carries the draw, so the screen can animate it once.
+    this.deps.emit(fresh ? { ...message(s), reveal: revealOf(s) } : message(s));
     if (s.phase === 'ended' || this.timer !== null) return;
     const botsToMove = actingSeats(s).some((seat) => seat !== ME && !s.players[seat].pending);
     if (!botsToMove && !allSubmitted(s)) return; // waiting for me
@@ -147,13 +148,25 @@ export class LocalGame {
   }
 }
 
+/** One side for the whole table and a distinct academy per seat, all drawn at random. */
 function newState(deps: LocalDeps, name: string, bots: number, level: BotLevel): GameState {
+  const rnd = () => deps.random?.() ?? Math.random();
+  const side: Side = rnd() < 0.5 ? 'A' : 'B';
+  const pool = ACADEMIES.map((a) => a.id);
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(rnd() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
   const seats: SeatConfig[] = [
-    { kind: 'human', name, side: 'A' },
-    ...Array.from({ length: bots }, (_, i): SeatConfig => ({ kind: 'bot', name: `Bot ${i + 1}`, side: 'A', botLevel: level })),
+    { kind: 'human', name, side, academyId: pool[0] },
+    ...Array.from({ length: bots }, (_, i): SeatConfig => ({ kind: 'bot', name: `Bot ${i + 1}`, side, academyId: pool[i + 1], botLevel: level })),
   ];
-  const seed = Math.floor((deps.random?.() ?? Math.random()) * (2 ** 31 - 1));
+  const seed = Math.floor(rnd() * (2 ** 31 - 1));
   return createGame({ seed, seats });
+}
+
+function revealOf(s: GameState): Reveal {
+  return { side: s.players[ME].side, academies: s.players.map((p) => ({ seat: p.seat, academyId: p.academyId })) };
 }
 
 /** Every seat but mine picks, exactly as the server's bots do. */

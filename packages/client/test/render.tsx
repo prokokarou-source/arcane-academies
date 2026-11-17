@@ -1,4 +1,15 @@
-import { render } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
+
+/** Tap a slot of the bottom bar: 'Leaderboards' | 'Rooms' | 'Play' | 'More'. */
+export function goTab(name: 'Leaderboards' | 'Rooms' | 'Play' | 'More') {
+  fireEvent.click(within(screen.getByRole('navigation', { name: 'Main menu' })).getByRole('button', { name }));
+}
+
+/** Open a row of the More tab, e.g. 'Settings', 'Account settings', 'Friends', 'Privacy'. */
+export function openMore(row: string) {
+  goTab('More');
+  fireEvent.click(screen.getByRole('button', { name: row }));
+}
 import { SoundProvider } from '../src/audio/context';
 import type { SoundBoard } from '../src/audio/sounds';
 import { PwaProvider, type Pwa } from '../src/pwa/context';

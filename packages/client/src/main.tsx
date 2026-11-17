@@ -12,6 +12,7 @@ import { App, PRIVACY_PATH } from './ui/App';
 import { ErrorBoundary } from './ui/ErrorBoundary';
 import { ClientProvider } from './ui/context';
 import './styles.css';
+import './menu.css';
 
 const url = (import.meta.env.VITE_SERVER_URL as string | undefined) ?? defaultServerUrl(location, import.meta.env.DEV);
 // Crash reports go to our own server; the page path only, never the query string.

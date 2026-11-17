@@ -2,7 +2,7 @@ import { cleanup, fireEvent, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { loadPrefs } from '../src/ui/prefs';
 import { memoryStorage } from './fakeSocket';
-import { renderApp } from './render';
+import { openMore, renderApp } from './render';
 
 afterEach(cleanup);
 
@@ -28,7 +28,7 @@ describe('sound preferences', () => {
   it('Settings has separate Music and Sound effects switches', () => {
     const storage = memoryStorage();
     renderApp({ storage });
-    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    openMore('Settings');
     fireEvent.click(screen.getByLabelText('Music'));
     expect(JSON.parse(storage.data.get('arcane.prefs')!)).toMatchObject({ music: false, sfx: true });
     fireEvent.click(screen.getByLabelText('Sound effects'));

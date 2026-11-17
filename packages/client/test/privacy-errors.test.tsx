@@ -3,25 +3,25 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createReporter, installErrorReporting, reportUrl, scrub } from '../src/net/errors';
 import { ErrorBoundary } from '../src/ui/ErrorBoundary';
 import { ISSUES_URL } from '../src/ui/Privacy';
-import { renderApp } from './render';
+import { openMore, renderApp } from './render';
 
 afterEach(cleanup);
 
 describe('Privacy screen', () => {
-  it('opens from the Home footer and goes back', () => {
+  it('opens from More and goes back', () => {
     renderApp();
-    fireEvent.click(screen.getByRole('button', { name: 'Privacy' }));
+    openMore('Privacy');
     expect(screen.getByRole('heading', { name: 'Privacy' })).toBeTruthy();
     expect(screen.getByText(/No email address/)).toBeTruthy();
     expect(screen.getByText(/Neon/)).toBeTruthy();
     expect(screen.getByRole('link', { name: 'GitHub issues' }).getAttribute('href')).toBe(ISSUES_URL);
     fireEvent.click(screen.getByRole('button', { name: 'Back' }));
-    expect(screen.getByRole('button', { name: 'Create game' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Privacy' })).toBeTruthy();
   });
 
   it('is linked from the sign-up screen', () => {
     renderApp();
-    fireEvent.click(screen.getByRole('button', { name: 'Log in or create an account' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Log in' }));
     expect(screen.queryByRole('button', { name: 'Privacy' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'New here? Create an account' }));
     fireEvent.click(screen.getByRole('button', { name: 'Privacy' }));

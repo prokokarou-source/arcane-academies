@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createConnectivity, createInstall, createUpdate } from '../src/pwa/install';
 import { fakeEnv, installPrompt } from './fakePwa';
 import { memoryStorage } from './fakeSocket';
-import { renderApp } from './render';
+import { goTab, renderApp } from './render';
 
 afterEach(cleanup);
 
@@ -15,10 +15,11 @@ function pwaFor(env: ReturnType<typeof fakeEnv>) {
 }
 
 describe('installing the app', () => {
-  it('Home shows Install app on Android once the browser allows it', async () => {
+  it('More shows Install app on Android once the browser allows it', async () => {
     const env = fakeEnv({ userAgent: ANDROID });
     const pwa = pwaFor(env);
     renderApp({ pwa });
+    goTab('More');
     expect(screen.queryByRole('button', { name: 'Install app' })).toBeNull();
     const e = installPrompt('accepted');
     act(() => {
@@ -31,8 +32,9 @@ describe('installing the app', () => {
     expect(screen.queryByRole('button', { name: 'Install app' })).toBeNull();
   });
 
-  it('Home shows the Add to Home Screen hint on iOS until dismissed', () => {
+  it('More shows the Add to Home Screen hint on iOS until dismissed', () => {
     renderApp({ pwa: pwaFor(fakeEnv({ userAgent: IPHONE })) });
+    goTab('More');
     expect(screen.getByText(/Add to Home Screen/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Got it' }));
     expect(screen.queryByText(/Add to Home Screen/)).toBeNull();

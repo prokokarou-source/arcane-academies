@@ -1,5 +1,4 @@
-import { useEffect, useState } from 'react';
-import type { LeaderRow } from '@arcane/protocol';
+import { useState } from 'react';
 import { USERNAME_RE } from '@arcane/protocol';
 import { useClient, useClientState, useT } from './context';
 import { PushToggle } from './PushToggle';
@@ -8,13 +7,12 @@ import { AvatarGlyph } from './Avatar';
 import { ScreenHead } from './ScreenHead';
 
 /** Friend list with online status, requests, and (inside a lobby) invites. */
-export function Friends(props: { onBack(): void; onAccount(): void }) {
+export function Friends(props: { onBack(): void; onAccount(): void; onProfile(username: string): void }) {
   const client = useClient();
   const t = useT();
   const { account, friends, socialError, lobby } = useClientState();
   const [name, setName] = useState('');
   const [invited, setInvited] = useState<Set<string>>(new Set());
-  const [tab, setTab] = useState<'list' | 'board'>('list');
 
   if (!account) {
     return (
@@ -39,17 +37,7 @@ export function Friends(props: { onBack(): void; onAccount(): void }) {
     <main className="screen">
       <ScreenHead title={t('friends')} onBack={props.onBack} />
       <p className="muted small">{t('signedInAs', { name: account })}</p>
-      <div className="row tabs" role="tablist">
-        <button role="tab" aria-selected={tab === 'list'} className={tab === 'list' ? 'primary' : ''} onClick={() => setTab('list')}>
-          {t('friendList')}
-        </button>
-        <button role="tab" aria-selected={tab === 'board'} className={tab === 'board' ? 'primary' : ''} onClick={() => setTab('board')}>
-          {t('leaderboard')}
-        </button>
-      </div>
-      {tab === 'board' ? (
-        <Leaderboard />
-      ) : (
+      {(
         <>
           <form
             className="panel row"
@@ -109,7 +97,9 @@ export function Friends(props: { onBack(): void; onAccount(): void }) {
                 <div className="seat-top">
                   <span className={`dot ${f.online ? 'on' : 'off'}`} />
                   <AvatarGlyph avatar={f.avatar} size={24} />
-                  <span className="name">{f.username}</span>
+                  <button className="link name" aria-label={t('profileOf', { name: f.username })} onClick={() => props.onProfile(f.username)}>
+                    {f.username}
+                  </button>
                   <span className="muted small">{f.online ? t('online') : t('offline')}</span>
                   {lobby && (
                     <button
@@ -152,34 +142,5 @@ export function Friends(props: { onBack(): void; onAccount(): void }) {
       <PushToggle />
 
     </main>
-  );
-}
-
-const winRate = (r: LeaderRow) => (r.games ? Math.round((100 * r.wins) / r.games) : 0);
-
-/** Me and my friends, ranked by wins (then win rate) on the server. */
-function Leaderboard() {
-  const client = useClient();
-  const t = useT();
-  const { leaderboard, friends } = useClientState();
-  // Fetch when opened and again whenever the friend list changes.
-  useEffect(() => client.requestLeaderboard(), [client, friends]);
-  if (!leaderboard) return <p className="status loading">{t('loadingStats')}</p>;
-  return (
-    <ol className="seats" aria-label={t('leaderboard')}>
-      {leaderboard.map((r, i) => (
-        <li key={r.username} className={`seat${r.me ? ' lb-me' : ''}`}>
-          <div className="seat-top">
-            <span className="rank">{i + 1}</span>
-            <AvatarGlyph avatar={r.avatar} size={24} />
-            <span className="name">{r.me ? `${r.username} (${t('you')})` : r.username}</span>
-            <span className="lb-stats">
-              <span className="small">{`${t('statWins')}: ${r.wins}`}</span>
-              <span className="muted small">{`${winRate(r)}% · ${t('statGames')}: ${r.games}`}</span>
-            </span>
-          </div>
-        </li>
-      ))}
-    </ol>
   );
 }

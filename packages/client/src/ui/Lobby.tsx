@@ -1,26 +1,39 @@
 import { useEffect, useState } from 'react';
-import { ACADEMIES, type BotLevel } from '@arcane/engine';
+import { ACADEMIES } from '@arcane/engine';
 import type { LobbySeat } from '@arcane/protocol';
 import { useSound } from '../audio/context';
-import { useClient, useClientState, useT, type T } from './context';
-import { LEVELS } from './Home';
+import type { LobbyState, RoomConfig } from '../net/menuTypes';
+import { useClient, useClientState, useT } from './context';
 import { Crest } from './Icon';
 import { AvatarGlyph } from './Avatar';
 import { inviteLink } from '../net/url';
 import { ReactionBubble, ReactionButton, useReactions } from './Reactions';
 import { PlayerMenu } from './Safety';
+import { RoomSettingsForm, duration, sideText, timerText } from './Rooms';
 
 const GRACE = [10_000, 30_000, 60_000, 120_000, 300_000, 600_000];
-const TIMERS = [30_000, 60_000, 90_000, 120_000, 300_000];
 
-const duration = (t: T, ms: number) => (ms < 60_000 ? t('seconds', { n: ms / 1000 }) : t('minutes', { n: ms / 60_000 }));
+/** The room's config, or one read from the seats when the server sends none. */
+export function configOf(lobby: LobbyState): RoomConfig {
+  if (lobby.config) return lobby.config;
+  const bots = lobby.seats.filter((s) => s.kind === 'bot');
+  return {
+    sideMode: 'random',
+    turnTimerMs: lobby.settings.turnTimerMs,
+    seats: Math.max(2, lobby.seats.length),
+    public: false,
+    bots: bots.length,
+    botLevel: bots[0]?.botLevel ?? 'normal',
+  };
+}
 
 export function Lobby(props: { onFriends?: () => void } = {}) {
   const client = useClient();
   const sound = useSound();
   const t = useT();
-  const { lobby, seatId } = useClientState();
-  const [botLevel, setBotLevel] = useState<BotLevel>('normal');
+  const state = useClientState();
+  const { seatId } = state;
+  const lobby = state.lobby as LobbyState | null;
   const [copied, setCopied] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const startsAt = lobby?.startsAt ?? null;
@@ -32,9 +45,11 @@ export function Lobby(props: { onFriends?: () => void } = {}) {
   }, [startsAt]);
   const reactions = useReactions();
   if (!lobby) return null;
-  // During a quick-match countdown the lobby runs itself: no host controls.
+  // During a queue countdown the lobby runs itself: no host controls.
   const counting = startsAt !== null;
   const isHost = lobby.hostId === seatId && !counting;
+  const config = configOf(lobby);
+  const humans = lobby.seats.filter((s) => s.kind === 'human').length;
   const taken = (s: LobbySeat) => new Set(lobby.seats.filter((x) => x.id !== s.id && x.academyId).map((x) => x.academyId));
 
   const link = inviteLink(lobby.code, location, typeof __LAN_ORIGIN__ === 'string' ? __LAN_ORIGIN__ : null);
@@ -54,13 +69,13 @@ export function Lobby(props: { onFriends?: () => void } = {}) {
     <main className="screen lobby">
       {lobby.quick ? (
         <header className="lobby-head">
-          <strong>{t('quickMatch')}</strong>
+          <strong>{t('matchFound')}</strong>
           {counting && (
             <>
               <span className="deadline" role="timer">
                 {t('quickStartsIn', { n: Math.max(0, Math.ceil((startsAt - now) / 1000)) })}
               </span>
-              <span className="muted small center">{t('quickFill')}</span>
+              <span className="muted small center">{t('drawAtStart')}</span>
             </>
           )}
         </header>
@@ -75,11 +90,21 @@ export function Lobby(props: { onFriends?: () => void } = {}) {
         </header>
       )}
 
+      {!lobby.quick && (
+        <p className="room-summary muted small center" aria-label={t('roomSettings')}>
+          {[
+            `${t('side')}: ${sideText(t, config.sideMode)}`,
+            `${t('turnTimer')}: ${timerText(t, config.turnTimerMs)}`,
+            t('seatsN', { n: config.seats }),
+            config.public ? t('public') : t('private'),
+            ...(config.bots ? [`${t('bots')}: ${config.bots} · ${t(`level_${config.botLevel}`)}`] : []),
+          ].join(' · ')}
+        </p>
+      )}
+
       <ul className="seats">
         {lobby.seats.map((s) => {
           const mine = s.id === seatId;
-          const editable = mine || (isHost && s.kind === 'bot');
-          const target = mine ? {} : { seatId: s.id };
           const used = taken(s);
           return (
             <li key={s.id} className="seat">
@@ -95,84 +120,44 @@ export function Lobby(props: { onFriends?: () => void } = {}) {
                 {mine && <ReactionButton />}
                 {!mine && s.username && <PlayerMenu username={s.username} />}
                 {s.id === lobby.hostId && <span className="tag">{t('host')}</span>}
-                {s.kind === 'bot' && !isHost && <span className="tag">{`${t('bot')} · ${t(`level_${s.botLevel ?? 'normal'}`)}`}</span>}
-                {isHost && s.kind === 'bot' && (
-                  <select aria-label={`${t('level')}: ${s.name}`} value={s.botLevel ?? 'normal'} onChange={(e) => client.setBotLevel(s.id, e.target.value as BotLevel)}>
-                    {LEVELS.map((l) => (
-                      <option key={l} value={l}>
-                        {`${t('bot')} · ${t(`level_${l}`)}`}
-                      </option>
-                    ))}
-                  </select>
-                )}
-                {isHost && !mine && !(lobby.quick && s.kind === 'human') && (
+                {s.kind === 'bot' && <span className="tag">{`${t('bot')} · ${t(`level_${s.botLevel ?? 'normal'}`)}`}</span>}
+                {isHost && !mine && s.kind === 'human' && !lobby.quick && (
                   <button className="link danger" aria-label={`${t('remove')} ${s.name}`} onClick={() => client.removeSeat(s.id)}>
                     ✕
                   </button>
                 )}
               </div>
-              {editable ? (
-                <div className="row">
-                  <select
-                    aria-label={`${t('academy')}: ${s.name}`}
-                    value={s.academyId ?? ''}
-                    onChange={(e) => client.setSeat({ ...target, academyId: e.target.value || null })}
-                  >
-                    <option value="">{t('random')}</option>
-                    {ACADEMIES.map((a) => (
-                      <option key={a.id} value={a.id} disabled={used.has(a.id)}>
-                        {a.name}
-                      </option>
-                    ))}
-                  </select>
-                  <select aria-label={`${t('side')}: ${s.name}`} value={s.side} onChange={(e) => client.setSeat({ ...target, side: e.target.value as 'A' | 'B' })}>
-                    <option value="A">{`${t('side')} A`}</option>
-                    <option value="B">{`${t('side')} B`}</option>
-                  </select>
-                </div>
+              {mine ? (
+                <select aria-label={`${t('academy')}: ${s.name}`} value={s.academyId ?? ''} onChange={(e) => client.setSeat({ academyId: e.target.value || null })}>
+                  <option value="">{t('random')}</option>
+                  {ACADEMIES.map((a) => (
+                    <option key={a.id} value={a.id} disabled={used.has(a.id)}>
+                      {used.has(a.id) ? `${a.name} · ${t('takenTag')}` : a.name}
+                    </option>
+                  ))}
+                </select>
               ) : (
-                <div className="muted small">
-                  {(ACADEMIES.find((a) => a.id === s.academyId)?.name ?? t('random')) + ` · ${t('side')} ${s.side}`}
-                </div>
+                <div className="muted small">{ACADEMIES.find((a) => a.id === s.academyId)?.name ?? t('random')}</div>
               )}
             </li>
           );
         })}
+        {!lobby.quick &&
+          Array.from({ length: Math.max(0, config.seats - lobby.seats.length) }, (_, i) => (
+            <li key={`free-${i}`} className="seat free-seat muted">
+              {t('freeSeat')}
+            </li>
+          ))}
       </ul>
 
       {isHost ? (
         <section className="panel">
-          <div className="row">
-            <select aria-label={t('newBotLevel')} value={botLevel} onChange={(e) => setBotLevel(e.target.value as BotLevel)}>
-              {LEVELS.map((l) => (
-                <option key={l} value={l}>
-                  {t(`level_${l}`)}
-                </option>
-              ))}
-            </select>
-            <button disabled={lobby.seats.length >= 7} onClick={() => client.addBot(botLevel)}>
-              {t('addBot')}
-            </button>
-          </div>
+          <h3>{t('roomSettings')}</h3>
+          <RoomSettingsForm config={config} minSeats={humans + config.bots} onChange={(patch) => client.roomConfig(patch)} />
           <label className="field">
             <span>{t('graceLabel')}</span>
             <select aria-label={t('graceLabel')} value={lobby.settings.graceMs} onChange={(e) => client.updateSettings({ graceMs: Number(e.target.value) })}>
               {GRACE.map((ms) => (
-                <option key={ms} value={ms}>
-                  {duration(t, ms)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="field">
-            <span>{t('turnTimer')}</span>
-            <select
-              aria-label={t('turnTimer')}
-              value={lobby.settings.turnTimerMs ?? 'off'}
-              onChange={(e) => client.updateSettings({ turnTimerMs: e.target.value === 'off' ? null : Number(e.target.value) })}
-            >
-              <option value="off">{t('off')}</option>
-              {TIMERS.map((ms) => (
                 <option key={ms} value={ms}>
                   {duration(t, ms)}
                 </option>
@@ -188,7 +173,7 @@ export function Lobby(props: { onFriends?: () => void } = {}) {
         !counting && <p className="muted center">{t('waitingHost')}</p>
       )}
 
-      {props.onFriends && <button onClick={props.onFriends}>{t('inviteFriends')}</button>}
+      {props.onFriends && !lobby.quick && <button onClick={props.onFriends}>{t('inviteFriends')}</button>}
 
       <button className="link" onClick={() => client.leave()}>
         {t('leave')}

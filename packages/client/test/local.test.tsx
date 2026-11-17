@@ -104,11 +104,10 @@ describe('solo game in the browser', () => {
     expect(h.sockets.flatMap((s) => s.sent)).toHaveLength(sent);
   });
 
-  it('starts from Home while the server is unreachable', () => {
+  it('starts from the Play tab while the server is unreachable', () => {
     const r = renderApp();
     act(() => r.sock().serverClose(1006));
-    fireEvent.change(screen.getByLabelText('Your name'), { target: { value: 'Ana' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Play solo' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Start Game' }));
     expect(screen.getByText('Term I')).toBeTruthy();
     expect(screen.queryByText('Reconnecting…')).toBeNull();
     expect(r.sockets.every((x) => x.sent.length === 0)).toBe(true);

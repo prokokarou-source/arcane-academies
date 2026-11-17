@@ -1,25 +1,37 @@
 import { act, cleanup, fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { Profile } from '@arcane/protocol';
-import { harness } from './fakeSocket';
-import { renderApp } from './render';
+import type { Profile } from '../src/net/menuTypes';
+import { harness, type FakeSocket } from './fakeSocket';
+import { openMore, renderApp } from './render';
 
 afterEach(cleanup);
 
 const profile: Profile = {
   username: 'Ana',
-  games: 4,
-  wins: 1,
-  totalScore: 170,
-  bestScore: 52,
-  recent: [{ at: Date.UTC(2026, 10, 15), academyId: 'nope', score: 52, place: 1, won: true, players: 3 }],
+  country: 'GR',
+  memberSince: Date.UTC(2026, 9, 1),
+  me: true,
+  ranked: [
+    { queue: '1v1', rating: 1320, division: 'magister', rank: 4, countryRank: 1 },
+    { queue: '3-5', rating: null, division: 'apprentice', rank: null, countryRank: null },
+  ],
+  totals: { games: 4, wins: 1, totalScore: 170, bestScore: 52, streak: 1, bestStreak: 2 },
+  byKind: { casual: { games: 3, wins: 0 }, ranked: { games: 1, wins: 1 } },
+  academies: [
+    { academyId: 'pyromancy', games: 3, wins: 1 },
+    { academyId: 'verdant', games: 1, wins: 0 },
+  ],
+  recent: [{ at: Date.UTC(2026, 10, 15), kind: 'ranked', queue: '1v1', academyId: 'pyromancy', side: 'B', score: 52, place: 1, players: 3, ratingDelta: 16 }],
 };
 
-/** Log in and open the Account screen. */
+/** What the fake server would send back, as JSON (the new messages are not in the old protocol types). */
+const recv = (s: FakeSocket, msg: object) => s.onmessage?.({ data: JSON.stringify(msg) });
+
+/** Log in and open Account settings from More. */
 function accountScreen() {
   const h = renderApp();
   act(() => h.sock().receive({ t: 'account', username: 'Ana' }));
-  fireEvent.click(screen.getByRole('button', { name: /Account|Ana/ }));
+  openMore('Account settings');
   return h;
 }
 
@@ -30,15 +42,22 @@ describe('stats client', () => {
     h.sock().open();
     h.sock().receive({ t: 'account', username: 'Ana' });
     h.client.requestProfile();
-    h.client.requestLeaderboard();
-    expect(h.sock().sent).toEqual([{ t: 'profile' }, { t: 'leaderboard' }]);
-    h.sock().receive({ t: 'profile', profile });
-    h.sock().receive({ t: 'leaderboard', rows: [{ username: 'Ana', games: 4, wins: 1, me: true }] });
+    h.client.requestProfile('Bob');
+    h.client.requestLeaderboard('1v1', 'global', '  bo ');
+    h.client.setCountry('GR');
+    expect(h.sock().sent).toEqual([
+      { t: 'profile' },
+      { t: 'profile', username: 'Bob' },
+      { t: 'leaderboard', queue: '1v1', scope: 'global', search: 'bo' },
+      { t: 'setCountry', country: 'GR' },
+    ]);
+    recv(h.sock(), { t: 'profile', profile });
+    recv(h.sock(), { t: 'leaderboard', queue: '1v1', scope: 'global', rows: [], me: null });
     h.client.changePassword('secret1', 'secret2');
     expect(h.client.getState().accountPending).toBe(true);
     h.sock().receive({ t: 'passwordChanged' });
     expect(h.client.getState()).toMatchObject({ profile, passwordChanged: true, accountPending: false });
-    expect(h.client.getState().leaderboard).toHaveLength(1);
+    expect(h.client.getState().leaderboard).toMatchObject({ queue: '1v1', scope: 'global', rows: [] });
 
     h.client.logoutAll();
     h.client.deleteAccount('secret2');
@@ -58,60 +77,61 @@ describe('stats client', () => {
 });
 
 describe('profile screen', () => {
-  it('asks for the profile and shows totals and the last games', () => {
-    const h = accountScreen();
-    fireEvent.click(screen.getByRole('button', { name: 'Profile' }));
+  it('opens my profile from the header with ranked tiles, totals, academies and the last games', () => {
+    const h = renderApp();
+    act(() => h.sock().receive({ t: 'account', username: 'Ana' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Open my profile' }));
     expect(h.sock().sent).toContainEqual({ t: 'profile' });
     expect(screen.getByText('Loading…')).toBeTruthy();
-    act(() => h.sock().receive({ t: 'profile', profile }));
-    const stats = screen.getByLabelText('Profile');
-    expect(stats.textContent).toContain('25%');
-    expect(stats.textContent).toContain('42.5');
-    expect(stats.textContent).toContain('52');
+    act(() => recv(h.sock(), { t: 'profile', profile }));
+    expect(screen.getByRole('img', { name: 'Greece' })).toBeTruthy();
+    const tile = screen.getByLabelText('Ranked 1v1');
+    expect(tile.textContent).toContain('1320');
+    expect(within(tile).getByRole('img', { name: 'Magister' })).toBeTruthy();
+    expect(screen.getByLabelText('Ranked 3–5 players').textContent).toContain('N/A');
+    const totals = screen.getByLabelText('Totals');
+    expect(totals.textContent).toContain('25%');
+    expect(totals.textContent).toContain('42.5');
+    expect(totals.textContent).toContain('1 / 2');
+    const academies = screen.getByRole('list', { name: 'Academies' });
+    expect(within(academies).getByText('Favourite').closest('li')!.textContent).toContain('Pyromancy');
     const games = screen.getByRole('list', { name: 'Last games' });
-    expect(games.textContent).toContain('1 of 3');
-    expect(games.textContent).toContain('52 pts');
-    expect(within(games).getByText('Win')).toBeTruthy();
+    expect(games.textContent).toContain('Ranked · 1v1');
+    expect(games.textContent).toContain('Side B');
+    expect(games.textContent).toContain('+16');
+    // Mine: editable avatar and country.
+    fireEvent.click(screen.getByText('Edit profile'));
+    fireEvent.change(screen.getByLabelText('Country'), { target: { value: 'CY' } });
+    expect(h.sock().sent).toContainEqual({ t: 'setCountry', country: 'CY' });
   });
 
-  it('says so when there are no games yet', () => {
-    const h = accountScreen();
-    fireEvent.click(screen.getByRole('button', { name: 'Profile' }));
-    act(() => h.sock().receive({ t: 'profile', profile: { ...profile, games: 0, wins: 0, totalScore: 0, bestScore: 0, recent: [] } }));
-    expect(screen.getByText(/No games yet/)).toBeTruthy();
-  });
-});
-
-describe('leaderboard tab', () => {
-  it('ranks me and my friends', () => {
+  it("another player's profile is read-only, opened from the friend list", () => {
     const h = renderApp();
     act(() => {
       h.sock().receive({ t: 'account', username: 'Ana' });
       h.sock().receive({ t: 'friends', list: { friends: [{ username: 'Bob', online: true }], incoming: [], outgoing: [] } });
     });
-    fireEvent.click(screen.getByRole('button', { name: /Friends · 1 online/ }));
-    fireEvent.click(screen.getByRole('tab', { name: 'Leaderboard' }));
-    expect(h.sock().sent).toContainEqual({ t: 'leaderboard' });
-    act(() =>
-      h.sock().receive({
-        t: 'leaderboard',
-        rows: [
-          { username: 'Bob', games: 2, wins: 2, me: false },
-          { username: 'Ana', games: 4, wins: 1, me: true },
-        ],
-      }),
-    );
-    const items = within(screen.getByRole('list', { name: 'Leaderboard' })).getAllByRole('listitem');
-    expect(items.map((li) => li.textContent)).toEqual([
-      expect.stringMatching(/^1Bob.*Wins: 2.*100%/),
-      expect.stringMatching(/^2Ana \(You\).*Wins: 1.*25%/),
-    ]);
-    fireEvent.click(screen.getByRole('tab', { name: 'Friend list' }));
-    expect(screen.getByRole('button', { name: 'Add friend' })).toBeTruthy();
+    openMore('Friends');
+    fireEvent.click(screen.getByRole('button', { name: "Bob's profile" }));
+    expect(h.sock().sent).toContainEqual({ t: 'profile', username: 'Bob' });
+    act(() => recv(h.sock(), { t: 'profile', profile: { ...profile, username: 'Cyd', me: false } }));
+    // Still waiting for Bob's.
+    expect(screen.getByText('Loading…')).toBeTruthy();
+    act(() => recv(h.sock(), { t: 'profile', profile: { ...profile, username: 'Bob', me: false, recent: [] } }));
+    expect(screen.queryByText('Edit profile')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Add friend' })).toBeNull(); // already a friend
+    expect(screen.getByRole('button', { name: 'Options for Bob' })).toBeTruthy();
+    expect(screen.getAllByText(/No games yet/).length).toBeGreaterThan(0);
   });
 });
 
 describe('managing the account', () => {
+  it('account settings hold the country picker', () => {
+    const h = accountScreen();
+    act(() => recv(h.sock(), { t: 'profile', profile }));
+    expect((screen.getByLabelText('Country') as HTMLSelectElement).value).toBe('GR');
+  });
+
   it('changes the password with the current one', () => {
     const h = accountScreen();
     const change = screen.getByRole('button', { name: 'Change password' }) as HTMLButtonElement;

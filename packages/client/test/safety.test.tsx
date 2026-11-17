@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest';
 import type { LobbyState } from '@arcane/protocol';
 import { harness } from './fakeSocket';
-import { renderApp } from './render';
+import { openMore, renderApp } from './render';
 
 afterEach(cleanup);
 
@@ -60,7 +60,7 @@ describe('safety client', () => {
 
   it('resets a forgotten password from the login screen', () => {
     const h = renderApp();
-    fireEvent.click(screen.getByRole('button', { name: 'Log in or create an account' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Log in' }));
     fireEvent.click(screen.getByRole('button', { name: 'Forgot password?' }));
     fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'Ana' } });
     fireEvent.change(screen.getByLabelText('Recovery code'), { target: { value: 'abcd efgh jkmn pqrs' } });
@@ -77,7 +77,7 @@ describe('safety client', () => {
       h.sock().receive({ t: 'account', username: 'Ana' });
       h.sock().receive({ t: 'blocked', list: ['Bob'] });
     });
-    fireEvent.click(screen.getByRole('button', { name: /Ana/ }));
+    openMore('Account settings');
     const list = screen.getByRole('list', { name: 'Blocked players' });
     fireEvent.click(within(list).getByRole('button', { name: 'Unblock' }));
     expect(h.sock().sent).toContainEqual({ t: 'unblock', username: 'Bob' });

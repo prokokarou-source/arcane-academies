@@ -69,6 +69,11 @@ export function academyArt(academyId: string): string {
   return `/academies/${CRESTS[academyId] ? academyId : 'astral'}.webp`;
 }
 
+/** An academy's crest colour (for chips and borders). */
+export function crestColor(academyId: string): string {
+  return (CRESTS[academyId] ?? CRESTS.astral).color;
+}
+
 export function Crest({ academyId, size = 40 }: { academyId: string; size?: number }) {
   const c = CRESTS[academyId] ?? CRESTS.astral;
   return (

@@ -103,6 +103,8 @@ export function Leaderboards(props: { queue: Queue; onQueue(q: Queue): void; onO
       {!board ? (
         <p className="status loading">{t('loadingStats')}</p>
       ) : (
+        // On a laptop the list scrolls inside this box; the page itself stays still.
+        <div className="board-scroll">
         <table className="board" aria-label={t('leaderboard')}>
           <thead>
             <tr>
@@ -130,6 +132,7 @@ export function Leaderboards(props: { queue: Queue; onQueue(q: Queue): void; onO
             </tfoot>
           )}
         </table>
+        </div>
       )}
     </TabScreen>
   );

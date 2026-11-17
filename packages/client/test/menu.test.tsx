@@ -97,7 +97,8 @@ describe('Play tab', () => {
     expect(h.sock().sent).toEqual([{ t: 'queueJoin', kind: 'casual', queue: '6-7', name: 'Ana' }]);
     expect(screen.getByRole('heading', { name: 'Casual · 6–7 players' })).toBeTruthy();
     recv(h.sock(), { t: 'queueState', kind: 'casual', queue: '6-7', searching: 4, waitedMs: 0 });
-    expect(screen.getByText('Players searching: 4')).toBeTruthy();
+    // How many others search is not shown (it would give away an empty queue).
+    expect(screen.queryByText(/Players searching/)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(h.sock().sent.at(-1)).toEqual({ t: 'queueLeave' });
     expect(screen.getByRole('button', { name: 'Start Game' })).toBeTruthy();

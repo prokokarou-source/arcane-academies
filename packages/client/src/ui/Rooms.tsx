@@ -157,7 +157,7 @@ function JoinSheet(props: { initial: string; playName(): string; onClose(): void
 }
 
 /** The room's settings: used before creating it and by the host in the lobby. */
-export function RoomSettingsForm(props: { config: RoomConfig; onChange(patch: Partial<RoomConfig>): void; minSeats?: number }) {
+export function RoomSettingsForm(props: { config: RoomConfig; onChange(patch: Partial<RoomConfig>): void; minSeats?: number; inLobby?: boolean }) {
   const t = useT();
   const c = props.config;
   return (
@@ -213,11 +213,14 @@ export function RoomSettingsForm(props: { config: RoomConfig; onChange(patch: Pa
         />
         <span className="hint">{c.public ? t('publicHint') : t('privateHint')}</span>
       </div>
-      <div className="setting row">
-        <span className="mode-label grow">{t('bots')}</span>
-        <Stepper label={t('bots')} value={c.bots} min={0} max={c.seats - 1} onChange={(bots) => props.onChange({ bots })} />
-      </div>
-      {c.bots > 0 && (
+      {/* In the lobby every free seat has its own "+ Bot", and empty seats get bots on Start: only their level is set here. */}
+      {!props.inLobby && (
+        <div className="setting row">
+          <span className="mode-label grow">{t('bots')}</span>
+          <Stepper label={t('bots')} value={c.bots} min={0} max={c.seats - 1} onChange={(bots) => props.onChange({ bots })} />
+        </div>
+      )}
+      {(c.bots > 0 || props.inLobby) && (
         <div className="setting">
           <span className="mode-label">{t('botLevel')}</span>
           <Segmented label={t('botLevel')} value={c.botLevel} onChange={(botLevel) => props.onChange({ botLevel })} options={LEVELS.map((l) => ({ value: l, label: t(`level_${l}`) }))} />

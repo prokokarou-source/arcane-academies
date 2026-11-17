@@ -208,3 +208,107 @@ button.outline { background: transparent; border-color: rgba(232, 181, 74, 0.7);
 .focus-panel h4 { color: var(--gold); font-size: 1.05rem; margin-top: 4px; }
 .game-desk .hand { flex-wrap: wrap; justify-content: center; overflow: visible; scroll-snap-type: none; margin: 0; padding: 12px 0 18px; }
 .game-desk .actions { max-width: 720px; }
+
+/* Room lobby: top bar, players (academy chips, free seats with + Bot / Invite), settings, Start. Phone: one column. */
+.lobby-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s3); }
+.lobby-bar .back { display: inline-flex; align-items: center; gap: 4px; min-height: 40px; padding: 0 var(--s3) 0 var(--s2); border-radius: 999px; background: rgba(51, 39, 95, 0.6); border-color: var(--line-gold); box-shadow: none; font-weight: 600; font-size: 0.95rem; }
+.lobby-bar .chev { font-size: 1.5rem; line-height: 1; margin-top: -3px; color: var(--gold); }
+.lobby-title { display: flex; align-items: baseline; gap: var(--s2); font-size: 1.2rem; margin: 0; flex: 1; min-width: 0; white-space: nowrap; }
+.lobby-title .code { font-size: 1.5rem; }
+.app-desk .lobby-title .code { font-size: 1.7rem; }
+.lobby-share { display: flex; gap: var(--s2); flex: 1 1 100%; }
+.lobby-share button { flex: 1; }
+.app-desk .lobby-share { flex: none; }
+.app-desk .lobby-share button { flex: none; }
+.lobby-share button { min-height: 38px; padding: 0 var(--s3); font-size: 0.9rem; }
+.lobby-vis { order: 1; flex: 1 1 100%; }
+.app-desk .lobby-vis { order: 0; }
+.lobby-cols { display: flex; flex-direction: column; gap: var(--s3); min-height: 0; }
+.lobby-players h3, .lobby-settings h3 { margin: 0; font-size: 1.05rem; }
+.lobby-players, .lobby-settings { gap: var(--s2); padding: var(--s3) var(--s4); }
+.lobby-seats { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.lobby-seat { position: relative; display: flex; flex-wrap: wrap; row-gap: 4px; align-items: center; gap: var(--s2); min-height: 48px; padding: 4px var(--s2) 4px var(--s3); border-radius: var(--r-md); background: var(--inset); border: 1px solid var(--line); }
+.lobby-seat.mine { border-color: var(--gold); box-shadow: 0 0 0 1px rgba(232, 181, 74, 0.35); }
+.lobby-seat .name { flex: 1 1 auto; min-width: 3em; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lobby-seat .grow { flex: 1; }
+.lobby-seat .tag { flex: none; }
+.lobby-seat .crest, .lobby-seat .chip-q { flex: none; }
+.lobby-seat button { min-height: 36px; padding: 0 var(--s3); font-size: 0.88rem; }
+.lobby-seat button.link { min-width: 36px; padding: 0 var(--s2); }
+.lobby-seat.free { border-style: dashed; background: none; }
+.bot-face { flex: none; width: 28px; height: 28px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: var(--panel); border: 1px solid var(--line); color: var(--muted); }
+.academy-chip { flex: none; margin-left: auto; display: inline-flex; align-items: center; gap: 6px; min-height: 36px; max-width: 100%; padding: 0 var(--s3) 0 6px; border-radius: 999px; background: var(--panel); border: 1px solid var(--crest, var(--line)); box-shadow: none; color: var(--text); font-size: 0.85rem; font-weight: 600; }
+.academy-chip > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+button.academy-chip::after { content: '▾'; color: var(--gold); font-size: 0.75rem; }
+.chip-q { flex: none; width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: var(--inset); border: 1px dashed var(--line-gold); color: var(--gold); font-weight: 700; font-size: 0.8rem; }
+.picker-backdrop { position: fixed; inset: 0; z-index: 30; }
+.academy-picker { position: absolute; z-index: 31; top: calc(100% + 4px); right: 0; width: min(380px, 92vw); display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; padding: var(--s2); border-radius: var(--r-md); background: var(--panel-solid); border: 1px solid var(--line-gold); box-shadow: var(--shadow); }
+.academy-picker button { display: flex; align-items: center; justify-content: flex-start; gap: 6px; min-height: 40px; padding: 0 var(--s2); font-size: 0.85rem; font-weight: 600; background: var(--inset); border: 1px solid var(--crest, var(--line)); box-shadow: none; text-align: left; }
+.academy-picker button > span:nth-child(2) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.academy-picker button.on { background: var(--gold-soft); border-color: var(--gold); }
+.academy-picker button:disabled { opacity: 0.4; }
+.academy-picker .taken { font-size: 0.7rem; color: var(--muted); }
+details.lobby-settings > summary::after { content: '▾'; margin-left: auto; font-size: 0.9rem; }
+details.lobby-settings[open] > summary::after { content: '▴'; }
+details.lobby-settings > summary { list-style: none; cursor: pointer; font-family: var(--title); font-size: 1.05rem; color: var(--gold); min-height: 32px; display: flex; align-items: center; }
+.settings-read { margin: 0; display: grid; grid-template-columns: 1fr; gap: 4px; }
+.settings-read > div { display: flex; justify-content: space-between; gap: var(--s3); padding: 6px 0; border-bottom: 1px solid var(--line); }
+.settings-read dt { color: var(--muted); }
+.settings-read dd { margin: 0; font-weight: 600; text-align: right; }
+.lobby-start { display: flex; flex-direction: column; gap: var(--s2); }
+.lobby-start .hint { margin: 0; }
+
+/* Laptop (≥ 1024px): the page never scrolls. The shell is exactly the window; long lists scroll in their own panel. */
+.app.app-desk { height: 100dvh; overflow: hidden; }
+.app-desk .desk { height: 100dvh; min-height: 0; }
+.app-desk .desk-main { height: 100dvh; min-height: 0; overflow: hidden; padding-top: var(--s2); }
+.app-desk .desk-main > .screen { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; padding: var(--s3) var(--s5) var(--s4); }
+.app-desk .desk-main > .screen.lobby { overflow: hidden; }
+.app-desk .desk-main > .screen > .screen-head { position: static; margin-top: calc(-1 * var(--s3)); }
+.app-desk .side-nav { overflow: hidden; gap: var(--s4); }
+.app-desk .rail-list { flex: 0 1 auto; min-height: 0; overflow-y: auto; }
+/* Lobby on a laptop: players | settings, Start under both. */
+.app-desk .room-lobby { gap: var(--s3); }
+.app-desk .lobby-vis { flex: none; }
+.app-desk .lobby-cols { flex: 1 1 auto; display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: var(--s4); align-items: stretch; }
+.app-desk .lobby-players, .app-desk .lobby-settings { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.app-desk .lobby-players { overflow: visible; }
+.app-desk .lobby-players .lobby-seats { min-height: 0; }
+.app-desk .lobby-settings .setting, .app-desk .lobby-settings .field { gap: 4px; }
+.app-desk .lobby-start { flex: none; }
+.app-desk .lobby-start button.start { min-height: 56px; }
+/* Laptop: lists scroll in their own panel (open rooms, leaderboard), the rest of the screen stays put. */
+.app-desk .desk-main > .screen.rooms, .app-desk .desk-main > .screen.boards { overflow: hidden; }
+.app-desk .rooms .room-table { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.app-desk .rooms .room-row.head { position: sticky; top: 0; z-index: 1; background: var(--night); }
+.app-desk .board-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.app-desk .board thead th { position: sticky; top: 0; z-index: 1; background: var(--night); }
+.app-desk .tab-action { flex: none; }
+/* More on a laptop: the groups in two columns, so the whole list fits. */
+.app-desk .desk-main > .screen.more { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: start; gap: var(--s4); }
+.app-desk .more > .banner { grid-column: 1 / -1; }
+/* The game on a laptop fits the window: header, opponents, my academy + panel (shrinks), hand, action bar in the flow. */
+.app.app-desk-game { height: 100dvh; overflow: hidden; }
+.app-desk-game .game-desk { height: 100dvh; min-height: 0; overflow: hidden; padding: var(--s3) var(--s5) var(--s3); gap: var(--s2); }
+.game-desk > * { flex: none; }
+.game-desk > .desk-mid { flex: 1 1 auto; min-height: 0; align-items: stretch; }
+.game-desk .desk-me { min-height: 0; }
+.game-desk .desk-me .me.has-art { flex: 1 1 auto; min-height: 0; }
+.game-desk .focus-panel { max-height: none; min-height: 0; }
+.game-desk .hand { flex-wrap: nowrap; justify-content: center; padding: 10px 0 16px; }
+.game-desk .card-wrap { flex: 0 1 150px; min-width: 112px; }
+.game-desk .actions { position: static; width: 100%; max-width: 720px; margin: 0 auto; padding: 0; background: none; border-top: 0; }
+@media (max-height: 800px) {
+  .game-desk .card { min-height: 180px; gap: 6px; }
+  .game-desk .opponents .neighbor { padding-block: 6px; }
+}
+/* Game over on a laptop: the results take the room of the table; a long breakdown scrolls inside the panel. */
+.game-desk.ended > .opponents, .game-desk.ended > .desk-mid { display: none; }
+.game-desk.ended > .game-end { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; width: 100%; max-width: 980px; margin-inline: auto; }
+details.lobby-settings > summary::-webkit-details-marker { display: none; }
+.app-desk .lobby-seat { flex-wrap: nowrap; }
+.app-desk .academy-chip { flex: 0 1 auto; min-width: 0; }
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.academy-chip { min-width: 6.5em; }
+.app-desk .lobby-seat { gap: 6px; }
+.lobby-seat .react-btn { min-width: 32px; width: 32px; padding: 0; }

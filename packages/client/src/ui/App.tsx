@@ -66,8 +66,10 @@ export function App({ initialRoom, initialPage }: { initialRoom?: string; initia
     setStack([]);
   };
   const wide = useWide();
-  // Laptop: menu screens sit in the middle of three columns. The game, lobby and queue keep their own full screen.
-  const desk = wide && !state.game && !state.lobby;
+  // Laptop: menu screens, the room lobby and the queue sit in the middle of three columns; the game has its own full screen.
+  const desk = wide && !state.game;
+  // In a lobby or queue the sidebar shows where I am, but its tabs wait until I leave.
+  const away = !!(state.lobby || state.queue);
 
   /** Logged-in players play under their username; guests under their saved name, made up once if empty. */
   const playName = () => {
@@ -131,7 +133,8 @@ export function App({ initialRoom, initialPage }: { initialRoom?: string; initia
       );
   }
 
-const statusBar = !online ? (
+  const navTab: Tab | null = away ? (state.lobby && !state.lobby.quick ? 'rooms' : 'play') : menu ? tab : null;
+  const statusBar = !online ? (
       <div className="bar bar-warn" role="status">
         {t('offlineBar')}
       </div>
@@ -198,7 +201,8 @@ const statusBar = !online ? (
         <DeskShell
           nav={
             <SideNav
-              tab={menu ? tab : null}
+              tab={navTab}
+              locked={away}
               onTab={goTab}
               onLogin={() => push({ id: 'account' })}
               onProfile={() => push({ id: 'profile' })}

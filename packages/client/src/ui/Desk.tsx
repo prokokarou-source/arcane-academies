@@ -36,7 +36,7 @@ export function DeskShell(props: { nav: ReactNode; children: ReactNode; aside: R
   );
 }
 
-export function SideNav(props: { tab: Tab | null; onTab(t: Tab): void; onLogin(): void; onProfile(): void; onFriends(): void }) {
+export function SideNav(props: { tab: Tab | null; locked?: boolean; onTab(t: Tab): void; onLogin(): void; onProfile(): void; onFriends(): void }) {
   const t = useT();
   const sound = useSound();
   const { account, avatar } = useClientState();
@@ -60,6 +60,7 @@ export function SideNav(props: { tab: Tab | null; onTab(t: Tab): void; onLogin()
               key={id}
               className={on ? 'on' : ''}
               aria-current={on ? 'page' : undefined}
+              disabled={props.locked && !on}
               onClick={() => {
                 sound('tap');
                 props.onTab(id);

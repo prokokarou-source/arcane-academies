@@ -11,8 +11,8 @@ const lobby: LobbyState = {
   code: 'WAND-42',
   inviteUrl: 'http://x/?room=WAND-42',
   hostId: 's1',
-  seats: [{ id: 's1', kind: 'human', name: 'Ana', academyId: null, side: 'A', connected: true }],
-  settings: { graceMs: 60_000, turnTimerMs: null },
+  seats: [{ id: 's1', kind: 'human', name: 'Ana', academyId: null, connected: true }],
+  settings: { graceMs: 60_000, turnTimerMs: null }, config: { sideMode: 'random' as const, turnTimerMs: null, seats: 7, public: false, bots: 0, botLevel: 'normal' as const }, kind: 'room' as const, 
 };
 
 describe('account client', () => {

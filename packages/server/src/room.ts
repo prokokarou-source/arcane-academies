@@ -15,7 +15,9 @@ import {
 } from '@arcane/engine';
 import type { Action, BotLevel, GameState, SeatConfig } from '@arcane/engine';
 import {
+  DEFAULT_ROOM_CONFIG,
   DEFAULT_SETTINGS,
+  ROOM_SEATS,
   REACTION_BURST,
   REACTION_REFILL_MS,
   SETTINGS_LIMITS,
@@ -23,7 +25,12 @@ import {
   type ClientMessage,
   type CloseReason,
   type ErrorCode,
+  type GameReveal,
   type LobbyState,
+  type OpenRoom,
+  type Queue,
+  type RoomConfig,
+  type Side,
   type ReactionId,
   type RoomSettings,
   type SeatId,
@@ -57,6 +64,28 @@ export interface RoomOptions {
   onResults?(records: GameRecord[]): void;
 }
 
+/** What made a room and how it is set up. */
+export interface RoomSetup {
+  kind: 'casual' | 'ranked' | 'room';
+  queue?: Queue;
+  /** Host rooms: the creator's choices (validated by the caller with checkConfig). */
+  config?: RoomConfig;
+  /** Called after anything a room list shows may have changed (lobby updates, start, close). */
+  onChange?(): void;
+}
+
+/** Why this setup is not allowed with `humans` players already seated, or null when fine. */
+export function checkConfig(c: RoomConfig, humans: number): string | null {
+  const [lo, hi] = ROOM_SEATS;
+  if (c.seats < lo || c.seats > hi) return 'A room has 2 to 7 seats';
+  if (c.bots < 0 || c.bots > c.seats - 1) return 'Bots must leave a seat for a player';
+  if (humans + c.bots > c.seats) return 'Not enough seats for the players already here';
+  if (c.turnTimerMs !== null && (c.turnTimerMs < SETTINGS_LIMITS.turnTimerMs[0] || c.turnTimerMs > SETTINGS_LIMITS.turnTimerMs[1])) {
+    return 'Turn timer out of range';
+  }
+  return null;
+}
+
 export const MAX_SEATS = 7;
 const TAKEOVER_LEVEL: BotLevel = 'normal';
 
@@ -66,7 +95,6 @@ interface Member {
   name: string;
   botLevel?: BotLevel;
   academyId: string | null;
-  side: 'A' | 'B';
   /** Humans only: secret used to rejoin. */
   token?: string;
   conn: Conn | null;
@@ -115,14 +143,32 @@ export class Room {
   private startTimer: unknown = null;
   /** The current game's results were handed to onResults. */
   private recorded = false;
+  private config: RoomConfig;
+  /** The current game's draw, sent with its first game message and then dropped. */
+  private reveal: GameReveal | null = null;
+  private side: Side = 'A';
 
   constructor(
     readonly code: string,
     private readonly opts: RoomOptions,
     private readonly clock: Clock,
+    readonly setup: RoomSetup = { kind: 'room' },
   ) {
     this.settings = { ...DEFAULT_SETTINGS, ...opts.defaultSettings };
+    this.config = { ...DEFAULT_ROOM_CONFIG, turnTimerMs: this.settings.turnTimerMs, ...setup.config };
+    this.settings.turnTimerMs = this.config.turnTimerMs;
     this.lastActivity = clock.now();
+    for (let i = 0; i < this.config.bots; i++) this.pushBot(this.config.botLevel);
+  }
+
+  /** The public-list entry, or null when this room is not listed (private, queue, started, closed or full). */
+  openInfo(): OpenRoom | null {
+    if (this.closed || this.phase !== 'lobby' || this.setup.kind !== 'room' || !this.config.public) return null;
+    if (this.humans().length >= this.humanSeats()) return null;
+    const host = this.members.find((m) => m.id === this.hostId);
+    if (!host) return null;
+    const { sideMode, turnTimerMs, seats, bots } = this.config;
+    return { code: this.code, host: host.name, sideMode, turnTimerMs, seats, taken: this.members.length, bots };
   }
 
   hasMember(conn: Conn): boolean {
@@ -135,13 +181,14 @@ export class Room {
     this.touch();
     if (this.closed) return this.fail(conn, 'no_room', 'This room has closed');
     if (this.phase !== 'lobby') return this.fail(conn, 'wrong_phase', 'The game has already started');
-    if (this.members.length >= MAX_SEATS) return this.fail(conn, 'room_full', 'The room is full');
+    if (this.members.length >= MAX_SEATS || this.humans().length >= this.humanSeats()) {
+      return this.fail(conn, 'room_full', 'The room is full');
+    }
     const m: Member = {
       id: this.nextSeatId(),
       kind: 'human',
       name,
       academyId: null,
-      side: 'A',
       token: randomBytes(16).toString('hex'),
       conn: null,
       botControlled: false,
@@ -206,13 +253,16 @@ export class Room {
         return this.setSeat(m, msg);
       case 'addBot':
         return this.hostLobby(m, () => this.addBot(m, msg.level));
+      case 'roomConfig':
+        return this.hostLobby(m, () => this.updateConfig(m, msg.settings));
       case 'removeSeat':
         return this.hostLobby(m, () => this.removeSeat(m, msg.seatId));
       case 'setBotLevel':
         return this.hostLobby(m, () => {
+          // One level for every bot.
           const target = this.members.find((x) => x.id === msg.seatId && x.kind === 'bot');
           if (!target) return this.fail(conn, 'bad_seat', 'No such bot seat');
-          target.botLevel = msg.level;
+          this.setBotLevel(msg.level);
           this.broadcast();
         });
       case 'settings':
@@ -234,8 +284,8 @@ export class Room {
     }
   }
 
-  /** Quick match: start by itself after `ms`, filling empty seats up to `size` with Normal bots. */
-  startCountdown(ms: number, size: number): void {
+  /** Queue rooms: start by itself after `ms` (empty seats up to `size` get Normal bots; queues pass 0: no bots). */
+  startCountdown(ms: number, size = 0): void {
     if (this.closed || this.phase !== 'lobby') return;
     this.quick = true;
     this.clearStartTimer();
@@ -245,6 +295,8 @@ export class Room {
       this.startsAt = null;
       if (this.closed || this.phase !== 'lobby') return;
       while (this.members.length < Math.min(size, MAX_SEATS)) this.pushBot('normal');
+      // Someone left during the countdown and nobody is left to play against.
+      if (this.members.length < 2) return this.close('left');
       this.begin();
     });
     this.broadcast();
@@ -261,9 +313,19 @@ export class Room {
       m.conn = null;
     }
     this.byConn.clear();
+    this.setup.onChange?.();
   }
 
   // ---------- lobby ----------
+
+  private humans(): Member[] {
+    return this.members.filter((m) => m.kind === 'human');
+  }
+
+  /** Seats humans may take: host rooms keep the bot seats apart; queue rooms take everyone matched. */
+  private humanSeats(): number {
+    return this.setup.kind === 'room' ? this.config.seats - this.config.bots : MAX_SEATS;
+  }
 
   private hostLobby(m: Member, fn: () => void): void {
     if (m.id !== this.hostId) return this.fail(m.conn!, 'not_host', 'Only the host can do that');
@@ -279,6 +341,11 @@ export class Room {
     const target = msg.seatId ? this.members.find((x) => x.id === msg.seatId) : m;
     const allowed = target === m || (target?.kind === 'bot' && m.id === this.hostId);
     if (!target || !allowed) return this.fail(conn, 'bad_seat', 'You cannot edit that seat');
+    if (msg.academyId !== undefined) {
+      // Queue tables draw every academy; in rooms each player picks their own and bots get a random one.
+      if (this.setup.kind !== 'room') return this.fail(conn, 'wrong_phase', 'Academies are drawn at random');
+      if (target.kind === 'bot') return this.fail(conn, 'bad_seat', 'Bots get a random academy');
+    }
     if (msg.academyId) {
       if (!ACADEMIES.some((a) => a.id === msg.academyId)) return this.fail(conn, 'unknown_academy', 'Unknown academy');
       if (this.members.some((x) => x !== target && x.academyId === msg.academyId)) {
@@ -287,13 +354,41 @@ export class Room {
     }
     if (msg.name !== undefined) target.name = msg.name;
     if (msg.academyId !== undefined) target.academyId = msg.academyId;
-    if (msg.side !== undefined) target.side = msg.side;
     this.broadcast();
   }
 
+  /** One more bot seat (the room grows when it is full); its level becomes every bot's level. */
   private addBot(host: Member, level: BotLevel): void {
     if (this.members.length >= MAX_SEATS) return this.fail(host.conn!, 'room_full', 'The room is full');
-    this.pushBot(level);
+    const seats = Math.max(this.config.seats, this.members.length + 1);
+    this.applyConfig({ ...this.config, seats, bots: this.config.bots + 1, botLevel: level });
+  }
+
+  private setBotLevel(level: BotLevel): void {
+    this.config.botLevel = level;
+    for (const x of this.members) if (x.kind === 'bot') x.botLevel = level;
+  }
+
+  /** Host: change the room's setup; bot seats follow `bots` and `botLevel`. */
+  private updateConfig(host: Member, patch: Partial<RoomConfig>): void {
+    if (this.setup.kind !== 'room') return this.fail(host.conn!, 'wrong_phase', 'Queue tables cannot be changed');
+    const next = { ...this.config, ...patch };
+    const why = checkConfig(next, this.humans().length);
+    if (why) return this.fail(host.conn!, 'bad_settings', why);
+    this.applyConfig(next);
+  }
+
+  private applyConfig(next: RoomConfig): void {
+    this.config = { ...next };
+    this.settings.turnTimerMs = next.turnTimerMs;
+    let bots = this.members.filter((x) => x.kind === 'bot');
+    while (bots.length > next.bots) {
+      const last = bots[bots.length - 1];
+      this.members = this.members.filter((x) => x !== last);
+      bots = bots.slice(0, -1);
+    }
+    for (let i = bots.length; i < next.bots; i++) this.pushBot(next.botLevel);
+    this.setBotLevel(next.botLevel);
     this.broadcast();
   }
 
@@ -304,7 +399,6 @@ export class Room {
       name: `Bot ${++this.botCounter}`,
       botLevel: level,
       academyId: null,
-      side: 'A',
       conn: null,
       botControlled: false,
       engineSeat: -1,
@@ -315,6 +409,10 @@ export class Room {
     const target = this.members.find((x) => x.id === seatId);
     if (!target || target === host || (this.quick && target.kind === 'human')) {
       return this.fail(host.conn!, 'bad_seat', 'You cannot remove that seat');
+    }
+    if (target.kind === 'bot') {
+      this.members = this.members.filter((x) => x !== target);
+      return this.applyConfig({ ...this.config, bots: this.config.bots - 1 });
     }
     this.removeMember(target, 'removed');
   }
@@ -328,6 +426,7 @@ export class Room {
       return this.fail(host.conn!, 'bad_settings', 'Turn timer out of range');
     }
     this.settings = { ...this.settings, ...patch };
+    this.config.turnTimerMs = this.settings.turnTimerMs;
     this.broadcast();
   }
 
@@ -386,15 +485,24 @@ export class Room {
 
   private begin(): void {
     const n = this.members.length;
+    const seed = this.opts.seed?.() ?? randomInt(2 ** 31 - 1);
+    // One side for the whole table; a random side comes from the game's seed.
+    const mode = this.setup.kind === 'room' ? this.config.sideMode : 'random';
+    this.side = mode === 'random' ? (seed % 2 === 0 ? 'A' : 'B') : mode;
     const seats: SeatConfig[] = this.members.map((m) => ({
       kind: m.kind,
       name: m.name,
-      side: m.side,
+      side: this.side,
       ...(m.academyId ? { academyId: m.academyId } : {}),
       ...(m.kind === 'bot' ? { botLevel: m.botLevel ?? 'normal' } : {}),
     }));
-    const seed = this.opts.seed?.() ?? randomInt(2 ** 31 - 1);
-    this.state = createGame({ seed, seats });
+    const game = createGame({ seed, seats });
+    // The engine adds the Rival Archmage (2 seats) on side A; it plays the table's side too.
+    this.state = { ...game, players: game.players.map((p) => (p.side === this.side ? p : { ...p, side: this.side })) };
+    this.reveal = {
+      side: this.side,
+      academies: this.state.players.map((p) => ({ seat: p.seat, academyId: p.academyId })),
+    };
     // With 2 seats the engine inserts the Rival Archmage at engine seat 1.
     this.members.forEach((m, i) => (m.engineSeat = n === 2 ? [0, 2][i] : i));
     this.phase = 'game';
@@ -568,6 +676,9 @@ export class Room {
         won: won.has(m.engineSeat),
         players: this.members.length,
         playedAt: this.clock.now(),
+        kind: this.setup.kind,
+        ...(this.setup.queue ? { queue: this.setup.queue } : {}),
+        side: this.side,
       });
     }
     if (records.length) this.opts.onResults(records);
@@ -599,6 +710,7 @@ export class Room {
 
   private broadcast(): void {
     if (this.closed) return;
+    this.setup.onChange?.();
     if (this.phase === 'lobby') {
       const lobby = this.lobbyState();
       for (const m of this.members) m.conn?.send({ t: 'lobby', lobby });
@@ -607,11 +719,14 @@ export class Room {
     const s = this.state!;
     const seats = this.seatStatus();
     const result = s.phase === 'ended' ? { scores: finalScores(s), winners: winners(s) } : undefined;
+    // The draw goes out once, with the game's first message.
+    const reveal = this.reveal;
+    this.reveal = null;
     for (const m of this.members) {
       if (!m.conn) continue;
       const seat = m.engineSeat;
       const legal = s.players[seat].pending ? [] : legalActions(s, seat);
-      m.conn.send({ t: 'game', view: viewFor(s, seat), legal, seats, deadline: this.deadline, ...(result ? { result } : {}) });
+      m.conn.send({ t: 'game', view: viewFor(s, seat), legal, seats, deadline: this.deadline, ...(result ? { result } : {}), ...(reveal ? { reveal } : {}) });
     }
   }
 
@@ -621,6 +736,9 @@ export class Room {
       inviteUrl: `${this.opts.clientUrl}/?room=${this.code}`,
       hostId: this.hostId ?? '',
       settings: { ...this.settings },
+      config: { ...this.config },
+      kind: this.setup.kind,
+      ...(this.setup.queue ? { queue: this.setup.queue } : {}),
       ...(this.quick ? { quick: true, startsAt: this.startsAt } : {}),
       seats: this.members.map((m) => ({
         id: m.id,
@@ -628,7 +746,6 @@ export class Room {
         name: m.name,
         ...(m.kind === 'bot' ? { botLevel: m.botLevel } : {}),
         academyId: m.academyId,
-        side: m.side,
         connected: m.kind === 'bot' || !!m.conn,
         ...(m.username ? { username: m.username } : {}),
         ...(m.avatar ? { avatar: m.avatar } : {}),

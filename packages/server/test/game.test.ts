@@ -67,8 +67,8 @@ describe('room game loop', () => {
     });
     room = setup.room;
     const [a] = setup.conns;
-    room.handle(a, { t: 'setSeat', academyId: 'verdant', side: 'B' });
-    room.handle(setup.conns[1], { t: 'setSeat', academyId: 'chronomancy', side: 'B' });
+    room.handle(a, { t: 'setSeat', academyId: 'verdant' });
+    room.handle(setup.conns[1], { t: 'setSeat', academyId: 'chronomancy' });
     room.handle(a, { t: 'start' });
     const prefer = (legal: Action[]) => legal.find((x) => x.type === 'tower') ?? legal[0];
     playToEnd(room, setup.conns, prefer);

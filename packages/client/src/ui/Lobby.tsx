@@ -125,14 +125,10 @@ export function Lobby(props: { onFriends?: () => void } = {}) {
                       </option>
                     ))}
                   </select>
-                  <select aria-label={`${t('side')}: ${s.name}`} value={s.side} onChange={(e) => client.setSeat({ ...target, side: e.target.value as 'A' | 'B' })}>
-                    <option value="A">{`${t('side')} A`}</option>
-                    <option value="B">{`${t('side')} B`}</option>
-                  </select>
                 </div>
               ) : (
                 <div className="muted small">
-                  {(ACADEMIES.find((a) => a.id === s.academyId)?.name ?? t('random')) + ` · ${t('side')} ${s.side}`}
+                  {ACADEMIES.find((a) => a.id === s.academyId)?.name ?? t('random')}
                 </div>
               )}
             </li>

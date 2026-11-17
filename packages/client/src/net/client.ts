@@ -13,7 +13,7 @@ import type {
   LobbyState,
   Profile,
   PushSub,
-  QuickSize,
+  Queue,
   ReactionId,
   ReportReason,
   RoomSettings,
@@ -46,7 +46,7 @@ export interface ClientDeps {
 
 /** A quick-match search in progress. */
 export interface QuickSearch {
-  size: QuickSize;
+  size: Queue;
   /** Players searching right now, me included (0 until the server answers). */
   searching: number;
   /** Local time (ms) the search began. */
@@ -177,7 +177,7 @@ export class GameClient {
   /** Saved login, resent on every (re)connect so presence follows the socket. */
   private accountToken: string | null = null;
   /** The quick-match request, resent after a reconnect (the server drops the queue entry with the socket). */
-  private quickReq: Extract<ClientMessage, { t: 'quickMatch' }> | null = null;
+  private quickReq: Extract<ClientMessage, { t: 'queueJoin' }> | null = null;
 
   constructor(private readonly deps: ClientDeps) {}
 
@@ -348,13 +348,13 @@ export class GameClient {
       case 'friends':
         this.set({ friends: msg.list });
         return;
-      case 'quickQueue': {
+      case 'queueState': {
         if (!this.quickReq) return;
         const since = this.state.quick?.since ?? this.now() - msg.waitedMs;
-        this.set({ quick: { size: msg.size, searching: msg.searching, since } });
+        this.set({ quick: { size: msg.queue, searching: msg.searching, since } });
         return;
       }
-      case 'quickCancelled':
+      case 'queueLeft':
         this.quickReq = null;
         this.set({ quick: null });
         return;
@@ -508,8 +508,8 @@ export class GameClient {
   }
 
   /** Look for strangers to play with; size null means any table. */
-  quickMatch(name: string, size: QuickSize): void {
-    this.quickReq = { t: 'quickMatch', name, size };
+  quickMatch(name: string, size: Queue): void {
+    this.quickReq = { t: 'queueJoin', kind: 'casual', queue: size, name };
     this.set({ notice: null, error: null, quick: { size, searching: 0, since: this.now() } });
     // Not open yet: onOpen sends it.
     if (this.ws?.readyState === OPEN && !this.rejoinPending) this.raw(this.quickReq);
@@ -519,13 +519,15 @@ export class GameClient {
     if (!this.quickReq) return;
     this.quickReq = null;
     this.set({ quick: null });
-    this.send({ t: 'quickCancel' });
+    this.send({ t: 'queueLeave' });
   }
 
-  /** Stop searching and play now against Normal bots. */
+  /** Stop searching and play now against Normal bots, here in the browser. */
   quickBots(): void {
     if (!this.quickReq) return;
-    this.send({ t: 'quickBots' });
+    const { name } = this.quickReq;
+    this.quickCancel();
+    this.solo(name, 2, 'normal');
   }
 
   leave(): void {

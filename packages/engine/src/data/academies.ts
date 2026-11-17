@@ -21,8 +21,8 @@ const LIST: AcademyDef[] = [
       B: [
         stage(res({ herbs: 2 }), [renown(3)]),
         stage(res({ moonstone: 3 }), [renown(5)]),
-        stage(res({ ink: 3 }), [renown(5)]),
-        stage(res({ moonstone: 4, dragonscale: 1 }), [renown(7)]),
+        stage(res({ ink: 2 }), [renown(5)]),
+        stage(res({ moonstone: 3, dragonscale: 1 }), [renown(7)]),
       ],
     },
   },
@@ -32,7 +32,7 @@ const LIST: AcademyDef[] = [
     home: 'ore',
     sides: {
       A: [stage(res({ herbs: 2 }), [renown(3)]), stage(res({ ink: 3 }), [duel(2)]), stage(res({ ore: 4 }), [renown(7)])],
-      B: [stage(res({ moonstone: 3 }), [renown(3), coins(3), duel(1)]), stage(res({ ore: 4 }), [renown(4), coins(4), duel(1)])],
+      B: [stage(res({ moonstone: 3 }), [renown(3), coins(3), duel(1)]), stage(res({ ore: 4 }), [renown(3), coins(2), duel(1)])],
     },
   },
   {
@@ -73,9 +73,9 @@ const LIST: AcademyDef[] = [
     sides: {
       A: [stage(res({ moonstone: 2 }), [renown(3)]), stage(res({ herbs: 2 }), [], 'freeNewFamily'), stage(res({ ink: 3 }), [renown(7)])],
       B: [
-        stage(res({ ore: 2 }), [renown(2)], 'freeFirstTurn'),
+        stage(res({ ore: 2 }), [renown(3)], 'freeFirstTurn'),
         stage(res({ ink: 3 }), [renown(3)], 'freeSixthTurn'),
-        stage(res({ starglass: 1, dragonscale: 1, essence: 1 }), [renown(5)]),
+        stage(res({ starglass: 1, dragonscale: 1, essence: 1 }), [renown(7)]),
       ],
     },
   },
@@ -86,7 +86,7 @@ const LIST: AcademyDef[] = [
     sides: {
       A: [stage(res({ ore: 2 }), [renown(3)]), stage(res({ starglass: 1, dragonscale: 1 }), [fromDiscard]), stage(res({ moonstone: 3 }), [renown(7)])],
       B: [
-        stage(res({ ink: 2 }), [renown(2), fromDiscard]),
+        stage(res({ ink: 2 }), [renown(1), fromDiscard]),
         stage(res({ starglass: 1, dragonscale: 1 }), [renown(1), fromDiscard]),
         stage(res({ herbs: 3 }), [fromDiscard]),
       ],

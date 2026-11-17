@@ -8,11 +8,11 @@ import { Crest } from './Icon';
 import { DivisionBadge, Flag, countryName } from './Menu';
 import { PlayerMenu } from './Safety';
 
-const academyName = (id: string) => ACADEMIES.find((a) => a.id === id)?.name ?? id;
+export const academyName = (id: string) => ACADEMIES.find((a) => a.id === id)?.name ?? id;
 const pct = (wins: number, games: number) => (games ? `${Math.round((100 * wins) / games)}%` : '–');
 const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
-const modeOf = (t: T, g: ProfileData['recent'][number]) =>
+export const modeOf = (t: T, g: ProfileData['recent'][number]) =>
   g.kind === 'ranked' || g.kind === 'casual' ? `${t(g.kind === 'ranked' ? 'modeRanked' : 'modeCasual')}${g.queue ? ` · ${t(`queue_${g.queue}`)}` : ''}` : t(`kind_${g.kind}`);
 
 /** Country picker for my own profile. */

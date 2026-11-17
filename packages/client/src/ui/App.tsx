@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { useOnline, useUpdate } from '../pwa/context';
 import type { Queue } from '../net/menuTypes';
 import { Account } from './Account';
+import { DeskShell, FriendsRail, SideNav } from './Desk';
+import { useWide } from './layout';
 import { useClient, useClientState, usePrefs, useT } from './context';
 import { Friends } from './Friends';
 import { Game } from './Game';
@@ -60,7 +62,12 @@ export function App({ initialRoom, initialPage }: { initialRoom?: string; initia
   const goTab = (x: Tab) => {
     setRoomCode(undefined);
     setTab(x);
+    // The laptop sidebar is always there, so a tab also closes any page opened over the tabs.
+    setStack([]);
   };
+  const wide = useWide();
+  // Laptop: menu screens sit in the middle of three columns. The game, lobby and queue keep their own full screen.
+  const desk = wide && !state.game && !state.lobby;
 
   /** Logged-in players play under their username; guests under their saved name, made up once if empty. */
   const playName = () => {
@@ -124,27 +131,26 @@ export function App({ initialRoom, initialPage }: { initialRoom?: string; initia
       );
   }
 
-  return (
-    <div className={`app${menu ? ' with-menu' : ''}`}>
-      {!online ? (
+const statusBar = !online ? (
+      <div className="bar bar-warn" role="status">
+        {t('offlineBar')}
+      </div>
+    ) : state.game || state.lobby ? (
+      state.conn === 'reconnecting' &&
+      !state.local && (
         <div className="bar bar-warn" role="status">
-          {t('offlineBar')}
+          {t('reconnecting')}
         </div>
-      ) : state.game || state.lobby ? (
-        state.conn === 'reconnecting' &&
-        !state.local && (
-          <div className="bar bar-warn" role="status">
-            {t('reconnecting')}
-          </div>
-        )
-      ) : (
-        slow && (
-          <div className="bar bar-warn" role="status">
-            {t('waking')}
-          </div>
-        )
-      )}
-      {menu && <MenuHeader onLogin={() => push({ id: 'account' })} onProfile={() => push({ id: 'profile' })} onFriends={() => push({ id: 'friends' })} />}
+      )
+    ) : (
+      slow && (
+        <div className="bar bar-warn" role="status">
+          {t('waking')}
+        </div>
+      )
+      );
+  const banners = (
+    <>
       {update.ready && (
         <div className="banner" role="status">
           <span>{t('updateReady')}</span>
@@ -183,8 +189,37 @@ export function App({ initialRoom, initialPage }: { initialRoom?: string; initia
           </button>
         </div>
       )}
-      {screen}
-      {menu && <BottomBar tab={tab} onTab={goTab} />}
+    </>
+  );
+
+  return (
+    <div className={`app${menu && !desk ? ' with-menu' : ''}${desk ? ' app-desk' : wide && state.game ? ' app-desk-game' : ''}`}>
+      {desk ? (
+        <DeskShell
+          nav={
+            <SideNav
+              tab={menu ? tab : null}
+              onTab={goTab}
+              onLogin={() => push({ id: 'account' })}
+              onProfile={() => push({ id: 'profile' })}
+              onFriends={() => push({ id: 'friends' })}
+            />
+          }
+          aside={<FriendsRail onFriends={() => push({ id: 'friends' })} onProfile={(user) => push({ id: 'profile', user })} onLogin={() => push({ id: 'account' })} />}
+        >
+          {statusBar}
+          {banners}
+          {screen}
+        </DeskShell>
+      ) : (
+        <>
+          {statusBar}
+          {menu && <MenuHeader onLogin={() => push({ id: 'account' })} onProfile={() => push({ id: 'profile' })} onFriends={() => push({ id: 'friends' })} />}
+          {banners}
+          {screen}
+          {menu && <BottomBar tab={tab} onTab={goTab} />}
+        </>
+      )}
       {state.game && <Reveal />}
       <RecoveryCodeDialog />
     </div>

@@ -3,6 +3,8 @@ import type { BotLevel } from '@arcane/engine';
 import { useSound } from '../audio/context';
 import { QUEUES, divisionOf, type Queue } from '../net/menuTypes';
 import { useClient, useClientState, useT } from './context';
+import { LastGame } from './Desk';
+import { useWide } from './layout';
 import { DivisionBadge, Glyph, LEVELS, Segmented, TabScreen } from './Menu';
 
 export type PlayMode = 'bots' | 'casual' | 'ranked';
@@ -40,6 +42,7 @@ export function Play(props: { sel: PlaySel; onSel(s: PlaySel): void; playName():
   const client = useClient();
   const t = useT();
   const sound = useSound();
+  const wide = useWide();
   const { account, profile } = useClientState();
   const { sel, onSel } = props;
   const set = (patch: Partial<PlaySel>) => onSel({ ...sel, ...patch });
@@ -62,9 +65,12 @@ export function Play(props: { sel: PlaySel; onSel(s: PlaySel): void; playName():
     <TabScreen
       className="play"
       action={
-        <button className="primary start" onClick={start}>
-          {needsLogin ? t('logInForRanked') : t('startGame')}
-        </button>
+        <>
+          {wide && <LastGame />}
+          <button className="primary start" onClick={start}>
+            {needsLogin ? t('logInForRanked') : wide && sel.mode !== 'bots' ? t('findMatch') : t('startGame')}
+          </button>
+        </>
       }
     >
       <Segmented
@@ -80,7 +86,7 @@ export function Play(props: { sel: PlaySel; onSel(s: PlaySel): void; playName():
       />
 
       {sel.mode === 'bots' ? (
-        <section className="mode-card on" aria-label={t('botsTable')}>
+        <section className="mode-card on bots-card" aria-label={t('botsTable')}>
           <div className="mode-top">
             <span className="mode-icon">
               <Glyph name="bots" size={30} />
@@ -96,10 +102,10 @@ export function Play(props: { sel: PlaySel; onSel(s: PlaySel): void; playName():
               />
             </span>
           </div>
-          <span className="mode-label">{t('opponents')}</span>
-          <Segmented label={t('opponents')} value={sel.bots} onChange={(bots) => set({ bots })} options={BOT_COUNTS.map((n) => ({ value: n, label: String(n) }))} />
-          <span className="mode-label">{t('botLevel')}</span>
-          <Segmented label={t('botLevel')} value={sel.level} onChange={(level) => set({ level })} options={LEVELS.map((l) => ({ value: l, label: t(`level_${l}`) }))} />
+          <span className="mode-label opp-label">{t('opponents')}</span>
+          <Segmented className="opp-seg" label={t('opponents')} value={sel.bots} onChange={(bots) => set({ bots })} options={BOT_COUNTS.map((n) => ({ value: n, label: String(n) }))} />
+          <span className="mode-label lvl-label">{t('botLevel')}</span>
+          <Segmented className="lvl-seg" label={t('botLevel')} value={sel.level} onChange={(level) => set({ level })} options={LEVELS.map((l) => ({ value: l, label: t(`level_${l}`) }))} />
           <p className="hint">{t('botsHint')}</p>
         </section>
       ) : (

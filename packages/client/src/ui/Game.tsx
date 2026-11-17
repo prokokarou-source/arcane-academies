@@ -13,7 +13,8 @@ import { AvatarGlyph } from './Avatar';
 import { useSound } from '../audio/context';
 import { GameEnd } from './GameEnd';
 import { useGameFx, useMotion, type GameFx, type Launch } from './gameFx';
-import { PlayerPanel } from './PlayerPanel';
+import { useWide } from './layout';
+import { PlayerDetails, PlayerPanel } from './PlayerPanel';
 import { ReactionBubble, ReactionButton, useReactions, type ShownReaction } from './Reactions';
 import { ROMAN, TermEnd } from './TermEnd';
 
@@ -28,6 +29,9 @@ export function Game({ onSettings, onRules }: { onSettings(): void; onRules(): v
   const [info, setInfo] = useState<string | null>(null);
   const [menu, setMenu] = useState<'closed' | 'open' | 'leave'>('closed');
   const reactions = useReactions();
+  // Laptop: the opponents sit in a row on top and the selected player's academy shows in a side panel.
+  const wide = useWide();
+  const [focus, setFocus] = useState<number | null>(null);
   const turnKey = game ? `${game.view.term}/${game.view.turn}/${game.view.phase}` : '';
   useEffect(() => setSelected(null), [turnKey]);
   const motion = useMotion();
@@ -45,6 +49,11 @@ export function Game({ onSettings, onRules }: { onSettings(): void; onRules(): v
   const bySeat = new Map<number, ShownReaction>();
   for (const r of reactions.values()) if (r.seat !== null) bySeat.set(r.seat, r);
   const elsewhere = [...bySeat.values()].filter((r) => r.seat !== left && r.seat !== right && r.seat !== view.me);
+  // Everyone else from my left neighbour round the table to my right neighbour.
+  const n = view.players.length;
+  const step = (left - view.me + n) % n === 1 ? 1 : n - 1;
+  const around = Array.from({ length: n - 1 }, (_, k) => (view.me + step * (k + 1)) % n);
+  const focusSeat = focus !== null && focus < n ? focus : view.me;
 
   let status: string;
   if (view.phase === 'ended') status = '';
@@ -68,8 +77,48 @@ export function Game({ onSettings, onRules }: { onSettings(): void; onRules(): v
     launch.current = r ? { uid, x: r.left + r.width / 2, y: r.top + r.height / 2 } : null;
   };
 
+  const meStrip = (
+    <button className={`me has-art${fx.towerUp ? ' tower-up' : ''}`} style={{ ['--art' as string]: `url(${academyArt(me.academyId)})` }} onClick={() => (wide ? setFocus(view.me) : setInspect(view.me))}>
+      <ReactionBubble reaction={bySeat.get(view.me)} name={nameOf(view.me)} />
+      {fx.towerUp && <span key={fx.id} className="tuck-card" aria-hidden="true" />}
+      <span className="me-row">
+        <Crest academyId={me.academyId} size={30} />
+        {productionOf(me).map((x, i) => (
+          <span key={i} className="res">
+            <EffectView effect={{ kind: 'produce', ...x }} />
+          </span>
+        ))}
+      </span>
+      <span className="me-row small">
+        <span className="num">
+          <Icon name="duel" />
+          {duelPowerOf(me)}
+        </span>
+        <ResearchView counts={research} />
+        <span>{`${t('tower')} ${t('stageOf', { built: tower.built, total: tower.total })}`}</span>
+        <span className="built-tally" data-fly-target>{`${t('built')} ${me.built.length}`}</span>
+        <FamilyCounts player={me} />
+      </span>
+      <span className="me-row small">
+        {tower.next ? (
+          <span className="glyphs">
+            {t('nextLevelLabel')}
+            <CostView cost={tower.next.cost} />
+          </span>
+        ) : (
+          <span>{t('towerDone')}</span>
+        )}
+      </span>
+    </button>
+  );
+  const statusLine = (
+    <p className="status" role="status">
+      {status}
+    </p>
+  );
+
   return (
-    <main className="screen game">
+    <main className={`screen game${wide ? ' game-desk' : ''}`}>
       <header className="game-head">
         <span>{t('term', { n: ROMAN[view.term - 1] })}</span>
         <span>{t('turn', { n: view.turn })}</span>
@@ -87,62 +136,50 @@ export function Game({ onSettings, onRules }: { onSettings(): void; onRules(): v
         </button>
       </header>
 
-      <section className="neighbors">
-        <Neighbor side={t('left')} player={view.players[left]} status={seats[left]} reaction={bySeat.get(left)} onClick={() => setInspect(left)}
-          fresh={fx.fresh} pass={showPass ? passHint(left) : undefined} at="left" />
-        <button className="table-btn" onClick={() => setTable(true)}>
-          {t('table')}
-        </button>
-        <Neighbor side={t('right')} player={view.players[right]} status={seats[right]} reaction={bySeat.get(right)} onClick={() => setInspect(right)}
-          fresh={fx.fresh} pass={showPass ? passHint(right) : undefined} at="right" />
-      </section>
-      {elsewhere.length > 0 && (
-        <p className="react-strip">
-          {elsewhere.map((r) => (
-            <span key={r.seatId}>
-              {nameOf(r.seat!)}
-              <ReactionBubble reaction={r} name={nameOf(r.seat!)} />
-            </span>
-          ))}
-        </p>
-      )}
-
-      <button className={`me has-art${fx.towerUp ? ' tower-up' : ''}`} style={{ ['--art' as string]: `url(${academyArt(me.academyId)})` }} onClick={() => setInspect(view.me)}>
-        <ReactionBubble reaction={bySeat.get(view.me)} name={nameOf(view.me)} />
-        {fx.towerUp && <span key={fx.id} className="tuck-card" aria-hidden="true" />}
-        <span className="me-row">
-          <Crest academyId={me.academyId} size={30} />
-          {productionOf(me).map((x, i) => (
-            <span key={i} className="res">
-              <EffectView effect={{ kind: 'produce', ...x }} />
-            </span>
-          ))}
-        </span>
-        <span className="me-row small">
-          <span className="num">
-            <Icon name="duel" />
-            {duelPowerOf(me)}
-          </span>
-          <ResearchView counts={research} />
-          <span>{`${t('tower')} ${t('stageOf', { built: tower.built, total: tower.total })}`}</span>
-          <span className="built-tally" data-fly-target>{`${t('built')} ${me.built.length}`}</span>
-          <FamilyCounts player={me} />
-        </span>
-        <span className="me-row small">
-          {tower.next ? (
-            <span className="glyphs">
-              {t('nextLevelLabel')}
-              <CostView cost={tower.next.cost} />
-            </span>
-          ) : (
-            <span>{t('towerDone')}</span>
+      {wide ? (
+        <>
+          <section className="opponents" aria-label={t('opponents')}>
+            {around.map((seat) => (
+              <Neighbor key={seat} side={seat === left ? t('left') : seat === right ? t('right') : ''} player={view.players[seat]} status={seats[seat]} reaction={bySeat.get(seat)}
+                onClick={() => setFocus(seat)} fresh={fx.fresh} focused={seat === focusSeat}
+                pass={showPass && (seat === left || seat === right) ? passHint(seat) : undefined} at={seat === left ? 'left' : seat === right ? 'right' : undefined} />
+            ))}
+          </section>
+          <div className="desk-mid">
+            <div className="desk-me">
+              {meStrip}
+              {statusLine}
+            </div>
+            <aside className="focus-panel" aria-label={t('focusedPlayer')}>
+              <PlayerDetails player={view.players[focusSeat]} status={seats[focusSeat]} onInfo={setInfo} />
+            </aside>
+          </div>
+        </>
+      ) : (
+        <>
+          <section className="neighbors">
+            <Neighbor side={t('left')} player={view.players[left]} status={seats[left]} reaction={bySeat.get(left)} onClick={() => setInspect(left)}
+              fresh={fx.fresh} pass={showPass ? passHint(left) : undefined} at="left" />
+            <button className="table-btn" onClick={() => setTable(true)}>
+              {t('table')}
+            </button>
+            <Neighbor side={t('right')} player={view.players[right]} status={seats[right]} reaction={bySeat.get(right)} onClick={() => setInspect(right)}
+              fresh={fx.fresh} pass={showPass ? passHint(right) : undefined} at="right" />
+          </section>
+          {elsewhere.length > 0 && (
+            <p className="react-strip">
+              {elsewhere.map((r) => (
+                <span key={r.seatId}>
+                  {nameOf(r.seat!)}
+                  <ReactionBubble reaction={r} name={nameOf(r.seat!)} />
+                </span>
+              ))}
+            </p>
           )}
-        </span>
-      </button>
-
-      <p className="status" role="status">
-        {status}
-      </p>
+          {meStrip}
+          {statusLine}
+        </>
+      )}
 
       {game.result ? (
         <GameEnd me={view.me} result={game.result} seats={seats} />
@@ -230,6 +267,7 @@ function Neighbor(props: {
   fresh: ReadonlySet<string>;
   pass?: 'gets' | 'gives';
   at?: 'left' | 'right';
+  focused?: boolean;
 }) {
   const t = useT();
   const { player: p, status: s } = props;
@@ -243,7 +281,7 @@ function Neighbor(props: {
   const fresh = p.built.some((c) => props.fresh.has(c.uid));
   return (
     <div className="neighbor-col">
-    <button className={`neighbor${fresh ? ' fresh-glow' : ''}`} onClick={props.onClick}>
+    <button className={`neighbor${fresh ? ' fresh-glow' : ''}${props.focused ? ' focused' : ''}`} aria-pressed={props.focused} onClick={props.onClick}>
       <span className="neighbor-top">
         <Crest academyId={p.academyId} size={22} />
         <span className="muted small">{props.side}</span>

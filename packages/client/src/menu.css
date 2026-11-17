@@ -148,3 +148,63 @@ button.outline { background: transparent; border-color: rgba(232, 181, 74, 0.7);
 @media (prefers-reduced-motion: reduce) {
   .reveal .reveal-title, .reveal .coin-lift, .reveal .reveal-caption, .reveal .reveal-card, .reveal .reveal-tap { animation: rv-fade 0.4s ease var(--d, 0s) both !important; }
 }
+/* Laptop menu (≥ 1024px, chosen in JS by useWide): sidebar | current screen | friends. The phone never gets these classes. */
+.app.app-desk { max-width: none; padding-bottom: 0; }
+.desk { display: grid; grid-template-columns: 248px minmax(0, 1fr) 272px; min-height: 100dvh; }
+.side-nav { position: sticky; top: 0; height: 100dvh; display: flex; flex-direction: column; gap: var(--s5); padding: var(--s4); background: rgba(20, 14, 40, 0.92); border-right: 1px solid var(--line-gold); }
+.side-logo { display: flex; align-items: center; gap: var(--s2); }
+.side-logo strong { flex: 1; min-width: 0; font-family: var(--title); font-weight: 400; font-size: 1.2rem; line-height: 1.1; color: var(--gold); }
+.side-tabs { display: flex; flex-direction: column; gap: 4px; flex: 1; }
+.side-tabs button { display: flex; align-items: center; justify-content: flex-start; gap: var(--s3); min-height: 48px; background: none; border: 1px solid transparent; box-shadow: none; color: var(--muted); font-size: 1.02rem; }
+.side-tabs button:hover { color: var(--text); background: rgba(255, 255, 255, 0.04); }
+.side-tabs button.on { color: var(--gold); background: var(--gold-soft); border-color: var(--line-gold); }
+.side-me { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: var(--s2); min-height: 60px; padding: var(--s2); border-radius: var(--r-md); background: var(--panel); border: 1px solid var(--line); box-shadow: none; text-align: left; font-weight: 400; color: var(--text); }
+.side-me-text { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.side-me .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.side-me > .primary { flex: 1 1 100%; }
+.desk-main { display: flex; flex-direction: column; gap: var(--s2); min-width: 0; padding-top: var(--s3); }
+.desk-main > * { width: 100%; max-width: 900px; margin-inline: auto; }
+.desk-main > .screen { padding: var(--s4) var(--s5) var(--s6); }
+.friends-rail { position: sticky; top: 0; height: 100dvh; overflow-y: auto; display: flex; flex-direction: column; gap: var(--s3); padding: var(--s5) var(--s4); background: rgba(20, 14, 40, 0.6); border-left: 1px solid var(--line); }
+.friends-rail p { margin: 0; }
+.rail-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.rail-friend { width: 100%; display: flex; align-items: center; justify-content: flex-start; gap: var(--s2); padding: 0 var(--s2); background: none; border: 1px solid transparent; box-shadow: none; }
+.rail-friend:hover { background: rgba(255, 255, 255, 0.04); }
+.rail-friend .name { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Play on a laptop: the mode cards side by side, the last game and a big button under them (not pinned). */
+.app-desk .tab-screen { padding-bottom: var(--s6); }
+.app-desk .tab-action { position: static; display: flex; flex-direction: column; gap: var(--s3); margin-top: var(--s2); padding: 0; background: none; }
+.app-desk .tab-action > * { max-width: none; }
+.app-desk button.start { min-height: 64px; font-size: 1.4rem; }
+.app-desk .play .mode-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s3); }
+.app-desk .play .mode-list > p { grid-column: 1 / -1; }
+.app-desk .play .mode-list .mode-card { justify-content: flex-start; min-height: 220px; padding: var(--s4); }
+.app-desk .play .mode-list .mode-top { flex-direction: column; text-align: center; }
+.app-desk .play .mode-list .mode-title { align-items: center; }
+.app-desk .play .mode-list .meta { justify-content: center; }
+.app-desk .play .mode-list .hint { text-align: center; }
+.app-desk .bots-card { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s2) var(--s5); padding: var(--s4) var(--s5); }
+.app-desk .bots-card > .mode-top, .app-desk .bots-card > .hint { grid-column: 1 / -1; }
+.app-desk .bots-card > .opp-label { grid-area: 2 / 1; }
+.app-desk .bots-card > .opp-seg { grid-area: 3 / 1; }
+.app-desk .bots-card > .lvl-label { grid-area: 2 / 2; }
+.app-desk .bots-card > .lvl-seg { grid-area: 3 / 2; }
+.last-game { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s3); padding: var(--s3) var(--s4); border-radius: var(--r-md); background: var(--panel); border: 1px solid var(--line); }
+.last-game .up { color: var(--ok); font-weight: 700; }
+.last-game .down { color: var(--danger); font-weight: 700; }
+.app-desk .board tfoot td { bottom: 0; }
+
+/* The game on a laptop ("draft 1"): opponents in a row, my academy + the selected player's panel, the whole hand below. */
+.app.app-desk-game { max-width: 1440px; }
+.game-desk { gap: var(--s3); padding: var(--s3) var(--s5) calc(88px + env(safe-area-inset-bottom)); }
+.opponents { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: var(--s2); }
+.neighbor.focused { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold), 0 6px 18px rgba(232, 181, 74, 0.18); }
+.desk-mid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 400px); gap: var(--s4); align-items: start; }
+.desk-me { display: flex; flex-direction: column; gap: var(--s2); min-width: 0; }
+.game-desk .me.has-art { min-height: 150px; justify-content: flex-end; }
+.focus-panel { max-height: 250px; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: var(--s3); padding: var(--s3) var(--s4); border-radius: var(--r-lg); background: var(--night-2); border: 1px solid var(--line-gold); }
+.focus-panel .academy-art { display: none; }
+.focus-panel h4 { color: var(--gold); font-size: 1.05rem; margin-top: 4px; }
+.game-desk .hand { flex-wrap: wrap; justify-content: center; overflow: visible; scroll-snap-type: none; margin: 0; padding: 12px 0 18px; }
+.game-desk .actions { max-width: 720px; }
